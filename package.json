@@ -1,0 +1,29 @@
+{
+  "name": "browser-automations",
+  "description": "Automated browser tasks including Amazon order notifications",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "xpi:firefox": "wxt zip -b firefox && mv .output/browser-automations-0.0.0-firefox.zip .output/browser-automations.xpi",
+    "compile": "vue-tsc --noEmit",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
+    "@wxt-dev/storage": "^1.2.6",
+    "vue": "^3.5.21"
+  },
+  "devDependencies": {
+    "@wxt-dev/module-vue": "^1.0.2",
+    "typescript": "^5.9.2",
+    "vue-tsc": "^3.0.6",
+    "wxt": "^0.20.6"
+  }
+}
