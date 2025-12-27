@@ -1,25 +1,52 @@
 import { storage } from '@wxt-dev/storage';
-import type { OrderStatus, StoredOrderState } from './types';
+import type { OrderSite, OrderStatus, StoredOrderState } from './types';
 
-const ORDER_STATE_KEY = 'local:orderState';
+const ORDER_STATE_KEYS: Record<OrderSite, string> = {
+  amazon: 'local:amazonOrderState',
+  aliexpress: 'local:aliexpressOrderState',
+};
+
+const LEGACY_AMAZON_STATE_KEY = 'local:orderState';
+
+const DELIVERED_TERMINAL_BY_SITE: Record<OrderSite, boolean> = {
+  amazon: true,
+  aliexpress: true,
+};
+
+function getOrderStateKey(site: OrderSite): string {
+  return ORDER_STATE_KEYS[site];
+}
 
 /**
  * Get stored order state.
  */
-export async function getStoredOrders(): Promise<StoredOrderState> {
-  const state = await storage.getItem<StoredOrderState>(ORDER_STATE_KEY);
-  return state ?? { orders: {}, lastChecked: 0 };
+export async function getStoredOrders(site: OrderSite): Promise<StoredOrderState> {
+  const key = getOrderStateKey(site);
+  const state = await storage.getItem<StoredOrderState>(key);
+  if (state) {
+    return state;
+  }
+
+  if (site === 'amazon') {
+    const legacy = await storage.getItem<StoredOrderState>(LEGACY_AMAZON_STATE_KEY);
+    if (legacy) {
+      await storage.setItem<StoredOrderState>(key, legacy);
+      return legacy;
+    }
+  }
+
+  return { orders: {}, lastChecked: 0 };
 }
 
 /**
  * Save order state.
  */
-export async function saveOrders(orders: OrderStatus[]): Promise<void> {
+export async function saveOrders(site: OrderSite, orders: OrderStatus[]): Promise<void> {
   const ordersRecord: Record<string, OrderStatus> = {};
   for (const order of orders) {
     ordersRecord[order.orderId] = order;
   }
-  await storage.setItem<StoredOrderState>(ORDER_STATE_KEY, {
+  await storage.setItem<StoredOrderState>(getOrderStateKey(site), {
     orders: ordersRecord,
     lastChecked: Date.now(),
   });
@@ -29,14 +56,16 @@ export async function saveOrders(orders: OrderStatus[]): Promise<void> {
  * Compare new orders against stored state and return changed orders.
  */
 export async function detectChanges(
-  newOrders: OrderStatus[]
+  newOrders: OrderStatus[],
+  site: OrderSite
 ): Promise<{
   changed: OrderStatus[];
   isFirstRun: boolean;
   previousOrders: Record<string, OrderStatus>;
 }> {
-  const stored = await getStoredOrders();
+  const stored = await getStoredOrders(site);
   const isFirstRun = Object.keys(stored.orders).length === 0;
+  const treatDeliveredAsTerminal = DELIVERED_TERMINAL_BY_SITE[site];
 
   const changed: OrderStatus[] = [];
 
@@ -47,7 +76,7 @@ export async function detectChanges(
       if (!isFirstRun) {
         changed.push(order);
       }
-    } else if (prev.isDelivered) {
+    } else if (treatDeliveredAsTerminal && prev.isDelivered) {
       // Already delivered, nothing more to track
       continue;
     } else if (prev.status !== order.status) {

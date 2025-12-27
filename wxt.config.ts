@@ -7,7 +7,7 @@ export default defineConfig({
     name: 'Browser Automations',
     description: 'Automated browser tasks including Amazon order notifications',
     permissions: ['alarms', 'notifications', 'storage', 'tabs'],
-    host_permissions: ['*://www.amazon.ca/*'],
+    host_permissions: ['*://www.amazon.ca/*', '*://www.aliexpress.com/*'],
     browser_specific_settings: {
       gecko: {
         id: 'browser-automations@shyndman.dev',

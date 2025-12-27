@@ -1,8 +1,13 @@
+export type OrderSite = 'amazon' | 'aliexpress';
+
 /**
- * Represents the status of a single Amazon order/shipment.
+ * Represents the status of a single order/shipment.
  */
 export interface OrderStatus {
-  /** Amazon order ID (e.g., "702-5274541-7015439") */
+  /** Site this order belongs to */
+  site: OrderSite;
+
+  /** Order ID (e.g., "702-5274541-7015439") */
   orderId: string;
 
   /** Primary status text (e.g., "Delivered today", "Out for delivery") */
@@ -30,6 +35,25 @@ export interface OrderStatus {
   isDelivered: boolean;
 }
 
+export interface AliExpressDiscoveredOrder {
+  orderId: string;
+  highLevelStatus: 'Awaiting delivery' | 'Completed';
+  orderDate: string | null;
+  storeName: string;
+  productTitles: string[];
+  productUrls: string[];
+  trackingUrl: string | null;
+}
+
+export interface AliExpressTrackingResult {
+  orderId: string;
+  currentStatus: string;
+  statusDetail: string;
+  isDelivered: boolean;
+  estimatedDelivery: string | null;
+  timestamp: string;
+}
+
 /**
  * Stored state for tracking order changes.
  */
@@ -42,6 +66,9 @@ export interface StoredOrderState {
  * Message types for communication between content script and background.
  */
 export type MessageType =
-  | { type: 'ORDERS_SCRAPED'; orders: OrderStatus[] }
+  | { type: 'ORDERS_SCRAPED'; site: OrderSite; orders: OrderStatus[] }
+  | { type: 'ALIEXPRESS_ORDERS_DISCOVERED'; orders: AliExpressDiscoveredOrder[] }
+  | { type: 'ALIEXPRESS_TRACKING_SCRAPED'; tracking: AliExpressTrackingResult }
+  | { type: 'ALIEXPRESS_AUTH_FAILED' }
   | { type: 'SCRAPE_ERROR'; error: string }
   | { type: 'TRIGGER_SCRAPE' };
