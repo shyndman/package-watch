@@ -1,11 +1,16 @@
 import { storage } from '@wxt-dev/storage';
-import type { OrderSite, OrderStatus, StoredOrderState } from './types';
+import type { OrderSite, OrderStatus, StoredOrderState, StoredScrapeStatus } from './types';
 
 type StorageKey = `local:${string}`;
 
 const ORDER_STATE_KEYS: Record<OrderSite, StorageKey> = {
   amazon: 'local:amazonOrderState',
   aliexpress: 'local:aliexpressOrderState',
+};
+
+const SCRAPE_STATUS_KEYS: Record<OrderSite, StorageKey> = {
+  amazon: 'local:amazonScrapeStatus',
+  aliexpress: 'local:aliexpressScrapeStatus',
 };
 
 const LEGACY_AMAZON_STATE_KEY: StorageKey = 'local:orderState';
@@ -15,8 +20,17 @@ const DELIVERED_TERMINAL_BY_SITE: Record<OrderSite, boolean> = {
   aliexpress: true,
 };
 
+const DEFAULT_SCRAPE_STATUS: StoredScrapeStatus = {
+  lastAlarmFiredAt: null,
+  isScrapeInProgress: false,
+};
+
 function getOrderStateKey(site: OrderSite): StorageKey {
   return ORDER_STATE_KEYS[site];
+}
+
+function getScrapeStatusKey(site: OrderSite): StorageKey {
+  return SCRAPE_STATUS_KEYS[site];
 }
 
 /**
@@ -38,6 +52,26 @@ export async function getStoredOrders(site: OrderSite): Promise<StoredOrderState
   }
 
   return { orders: {}, lastChecked: 0 };
+}
+
+export async function getScrapeStatus(site: OrderSite): Promise<StoredScrapeStatus> {
+  const key = getScrapeStatusKey(site);
+  const status = await storage.getItem<StoredScrapeStatus>(key);
+  if (status) {
+    return status;
+  }
+
+  return { ...DEFAULT_SCRAPE_STATUS };
+}
+
+export async function updateScrapeStatus(
+  site: OrderSite,
+  updates: Partial<StoredScrapeStatus>
+): Promise<StoredScrapeStatus> {
+  const current = await getScrapeStatus(site);
+  const next = { ...current, ...updates };
+  await storage.setItem<StoredScrapeStatus>(getScrapeStatusKey(site), next);
+  return next;
 }
 
 /**

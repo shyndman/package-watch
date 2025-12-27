@@ -1,5 +1,5 @@
 import type { MessageType, OrderSite, OrderStatus } from '../lib/types';
-import { detectChanges, saveOrders } from '../lib/storage';
+import { detectChanges, saveOrders, updateScrapeStatus } from '../lib/storage';
 import {
   handleAliExpressAuthFailed,
   handleAliExpressOrdersDiscovered,
@@ -33,6 +33,13 @@ const scrapeInProgressBySite: Record<OrderSite, boolean> = {
 
 const orderListTimeouts = new Map<OrderSite, ReturnType<typeof setTimeout>>();
 
+const ALARM_LOG_LABEL_BY_SITE: Record<OrderSite, string> = {
+  amazon: 'Amazon',
+  aliexpress: 'AliExpress',
+};
+const ALARM_LOG_PREFIX = 'Alarm fired: ';
+const ALARM_LOG_SUFFIX = ' order check started';
+
 export default defineBackground(() => {
   console.log('[Orders] Background script loaded');
 
@@ -43,25 +50,27 @@ export default defineBackground(() => {
     console.log('[Orders] Extension installed, setting up alarms');
     scheduleNextCheck(AMAZON_SITE, []);
     scheduleNextCheck(ALIEXPRESS_SITE, []);
-    startScrape(AMAZON_SITE);
-    startScrape(ALIEXPRESS_SITE);
+    void startScrape(AMAZON_SITE);
+    void startScrape(ALIEXPRESS_SITE);
   });
 
   browser.runtime.onStartup.addListener(() => {
     console.log('[Orders] Browser started, checking alarms');
     scheduleNextCheck(AMAZON_SITE, []);
     scheduleNextCheck(ALIEXPRESS_SITE, []);
+    void startScrape(AMAZON_SITE);
+    void startScrape(ALIEXPRESS_SITE);
   });
 });
 
 function handleAlarm(alarm: Browser.alarms.Alarm): void {
   if (alarm.name === getAlarmName(AMAZON_SITE)) {
-    startScrape(AMAZON_SITE);
+    void startScrape(AMAZON_SITE);
     return;
   }
 
   if (alarm.name === getAlarmName(ALIEXPRESS_SITE)) {
-    startScrape(ALIEXPRESS_SITE);
+    void startScrape(ALIEXPRESS_SITE);
   }
 }
 
@@ -92,13 +101,14 @@ function handleMessage(message: MessageType, sender: Browser.runtime.MessageSend
   }
 }
 
-function startScrape(site: OrderSite): void {
+async function startScrape(site: OrderSite): Promise<void> {
   if (scrapeInProgressBySite[site]) {
     console.log(`[${getSiteLabel(site)}] Scrape already in progress`);
     return;
   }
 
   scrapeInProgressBySite[site] = true;
+  await recordScrapeStart(site);
 
   if (site === AMAZON_SITE) {
     void performAmazonScrape(getAmazonDeps());
@@ -203,6 +213,7 @@ function handleScrapeFailure(site: OrderSite): void {
   clearScrapeTimeout(site);
   scheduleNextCheck(site, []);
   scrapeInProgressBySite[site] = false;
+  void recordScrapeEnd(site);
 }
 
 function trackScrapeTab(site: OrderSite, tabId: number): void {
@@ -246,6 +257,7 @@ async function processOrdersForSite(site: OrderSite, orders: OrderStatus[]): Pro
   await saveOrders(site, orders);
   scheduleNextCheck(site, orders);
   scrapeInProgressBySite[site] = false;
+  void recordScrapeEnd(site);
 }
 
 async function notifyChanges(
@@ -270,4 +282,28 @@ function shouldPlaySoundForOrder(
   }
 
   return order.isDelivered && !previousOrder?.isDelivered;
+}
+
+function buildAlarmFiredMessage(site: OrderSite): string {
+  return `${ALARM_LOG_PREFIX}${ALARM_LOG_LABEL_BY_SITE[site]}${ALARM_LOG_SUFFIX}`;
+}
+
+async function recordScrapeStart(site: OrderSite): Promise<void> {
+  console.log(buildAlarmFiredMessage(site));
+  try {
+    await updateScrapeStatus(site, {
+      lastAlarmFiredAt: Date.now(),
+      isScrapeInProgress: true,
+    });
+  } catch (e) {
+    console.error(`[${getSiteLabel(site)}] Error updating scrape status:`, e);
+  }
+}
+
+async function recordScrapeEnd(site: OrderSite): Promise<void> {
+  try {
+    await updateScrapeStatus(site, { isScrapeInProgress: false });
+  } catch (e) {
+    console.error(`[${getSiteLabel(site)}] Error updating scrape status:`, e);
+  }
 }

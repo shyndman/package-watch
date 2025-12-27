@@ -62,6 +62,11 @@ export interface StoredOrderState {
   lastChecked: number;
 }
 
+export interface StoredScrapeStatus {
+  lastAlarmFiredAt: number | null;
+  isScrapeInProgress: boolean;
+}
+
 /**
  * Message types for communication between content script and background.
  */

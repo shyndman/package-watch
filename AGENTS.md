@@ -1,3 +1,6 @@
+Notes:
+- Preferred full test run: `pnpm test run`
+
 <!-- OPENSPEC:START -->
 # OpenSpec Instructions
 
