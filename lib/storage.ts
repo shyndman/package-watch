@@ -47,6 +47,9 @@ export async function detectChanges(
       if (!isFirstRun) {
         changed.push(order);
       }
+    } else if (prev.isDelivered) {
+      // Already delivered, nothing more to track
+      continue;
     } else if (prev.status !== order.status) {
       // Status changed
       changed.push(order);
