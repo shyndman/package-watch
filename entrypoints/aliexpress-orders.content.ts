@@ -54,7 +54,7 @@ const GREETING_TOKEN = 'hi,';
 const LOGIN_URL_TOKENS = ['login', 'signin'];
 
 const ORDER_ID_REGEX = /Order ID:\s*(\d+)/i;
-const ORDER_DATE_REGEX = /Order date:\s*([^O]+)/i;
+const ORDER_DATE_REGEX = /Order date:\s*([A-Za-z]{3}\s+\d{1,2},?\s*\d{4})/i;
 
 const MONTH_MAP: Record<string, number> = {
   jan: 1,
@@ -185,7 +185,7 @@ function parseOrderInfo(
   const orderDateText = orderDateMatch?.[1]?.trim();
   if (!orderDateText) {
     throw new ParseFailureError(
-      `Order ${orderId}: missing order date`,
+      `Order ${orderId}: missing or unparseable order date`,
       undefined,
       location.href
     );
