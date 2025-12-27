@@ -2,6 +2,8 @@ import type { MessageType, OrderSite, OrderStatus } from '../lib/types';
 import { detectChanges, saveOrders, updateScrapeStatus } from '../lib/storage';
 import {
   handleAliExpressAuthFailed,
+  handleAliExpressOrderDetailsMessage,
+  handleAliExpressOrderDetailsParseFailure,
   handleAliExpressOrdersDiscovered,
   handleAliExpressTrackingParseFailure,
   handleAliExpressTrackingMessage,
@@ -91,6 +93,11 @@ function handleMessage(message: MessageType, sender: Browser.runtime.MessageSend
     return;
   }
 
+  if (message.type === 'ALIEXPRESS_ORDER_DETAILS_SCRAPED') {
+    handleAliExpressOrderDetailsMessage(message.details, sender.tab?.id, getAliExpressDeps());
+    return;
+  }
+
   if (message.type === 'ALIEXPRESS_TRACKING_SCRAPED') {
     handleAliExpressTrackingMessage(message.tracking, sender.tab?.id, getAliExpressDeps());
     return;
@@ -148,6 +155,7 @@ function getAliExpressDeps() {
     clearScrapeTimeout,
     processOrdersForSite,
     sendAuthFailedNotification,
+    openOrderDetailsTab,
     openTrackingTab,
   };
 }
@@ -195,6 +203,29 @@ async function openTrackingTab(url: string): Promise<number | null> {
   }
 }
 
+async function openOrderDetailsTab(url: string): Promise<number | null> {
+  if (!scrapeInProgressBySite[ALIEXPRESS_SITE]) {
+    return null;
+  }
+
+  try {
+    const tab = await browser.tabs.create({
+      url,
+      active: false,
+    });
+
+    if (!tab.id) {
+      return null;
+    }
+
+    trackScrapeTab(ALIEXPRESS_SITE, tab.id);
+    return tab.id;
+  } catch (e) {
+    console.error(`[${getSiteLabel(ALIEXPRESS_SITE)}] Error creating order details tab:`, e);
+    return null;
+  }
+}
+
 async function handleParseFailureMessage(
   message: Extract<MessageType, { type: 'PARSE_FAILURE' }>,
   sender: Browser.runtime.MessageSender
@@ -210,6 +241,8 @@ async function handleParseFailureMessage(
 
   if (message.site === ALIEXPRESS_SITE && message.phase === 'aliexpress-tracking') {
     await handleAliExpressTrackingParseFailure(tabId, getAliExpressDeps());
+  } else if (message.site === ALIEXPRESS_SITE && message.phase === 'aliexpress-order-details') {
+    await handleAliExpressOrderDetailsParseFailure(tabId, getAliExpressDeps());
   } else if (tabId !== undefined) {
     await closeScrapeTab(message.site, tabId);
   }

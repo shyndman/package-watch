@@ -48,7 +48,7 @@ const ORDER_ITEM_SELECTOR = '.order-item';
 const ORDER_STATUS_SELECTOR = '.order-item-header-status-text';
 const ORDER_INFO_SELECTOR = '.order-item-header-right-info';
 const STORE_LINK_SELECTOR = 'a[href*="/store/"]';
-const PRODUCT_LINK_SELECTOR = 'a[href*="/item/"]';
+const ORDER_DETAILS_LINK_SELECTOR = 'a[href*="/p/order/detail.html"]';
 const TRACKING_LINK_SELECTOR = 'a[href*="/tracking/"]';
 const GREETING_TOKEN = 'hi,';
 const LOGIN_URL_TOKENS = ['login', 'signin'];
@@ -127,7 +127,7 @@ function parseOrderItem(item: HTMLElement, index: number): AliExpressDiscoveredO
   const orderInfo = parseOrderInfo(item, index);
 
   const storeName = parseStoreName(item);
-  const { productTitles, productUrls } = parseProducts(item, orderInfo.orderId);
+  const orderDetailsUrl = parseOrderDetailsUrl(item, orderInfo.orderId, index);
   const trackingUrl = parseTrackingUrl(item);
 
   return {
@@ -135,8 +135,7 @@ function parseOrderItem(item: HTMLElement, index: number): AliExpressDiscoveredO
     highLevelStatus,
     orderDate: orderInfo.orderDate,
     storeName,
-    productTitles,
-    productUrls,
+    orderDetailsUrl,
     trackingUrl,
   };
 }
@@ -201,45 +200,18 @@ function parseStoreName(item: HTMLElement): string {
   return item.querySelector(STORE_LINK_SELECTOR)?.textContent?.trim() ?? '';
 }
 
-function parseProducts(
-  item: HTMLElement,
-  orderId: string
-): { productTitles: string[]; productUrls: string[] } {
-  const productTitles: string[] = [];
-  const productUrls: string[] = [];
-  const productEls = item.querySelectorAll(PRODUCT_LINK_SELECTOR);
-
-  for (const [productIndex, el] of Array.from(productEls).entries()) {
-    const title = el.textContent?.trim();
-    const href = (el as HTMLAnchorElement).href;
-    if (!title) {
-      throw new ParseFailureError(
-        `Order ${orderId}: product ${productIndex + 1} title missing`,
-        undefined,
-        location.href
-      );
-    }
-    if (!href) {
-      throw new ParseFailureError(
-        `Order ${orderId}: product ${productIndex + 1} URL missing`,
-        undefined,
-        location.href
-      );
-    }
-
-    productTitles.push(title);
-    productUrls.push(href);
-  }
-
-  if (productTitles.length === 0) {
+function parseOrderDetailsUrl(item: HTMLElement, orderId: string, index: number): string | null {
+  const detailsEl = item.querySelector(ORDER_DETAILS_LINK_SELECTOR) as HTMLAnchorElement | null;
+  const href = detailsEl?.href ?? null;
+  if (!href) {
     throw new ParseFailureError(
-      `Order ${orderId}: no product titles found`,
+      `Order item ${index + 1} (${orderId}): missing order details URL`,
       undefined,
       location.href
     );
   }
 
-  return { productTitles, productUrls };
+  return href;
 }
 
 function parseTrackingUrl(item: HTMLElement): string | null {

@@ -3,6 +3,7 @@ export type OrderSite = 'amazon' | 'aliexpress';
 export type ParseFailurePhase =
   | 'amazon-orders'
   | 'aliexpress-orders'
+  | 'aliexpress-order-details'
   | 'aliexpress-tracking'
   | 'background-parse';
 
@@ -46,9 +47,14 @@ export interface AliExpressDiscoveredOrder {
   highLevelStatus: 'Awaiting delivery' | 'Completed';
   orderDate: string | null;
   storeName: string;
-  productTitles: string[];
-  productUrls: string[];
+  orderDetailsUrl: string | null;
   trackingUrl: string | null;
+}
+
+export interface AliExpressOrderDetailsResult {
+  orderId: string;
+  productTitle: string;
+  productUrl: string;
 }
 
 export interface AliExpressTrackingResult {
@@ -79,6 +85,7 @@ export interface StoredScrapeStatus {
 export type MessageType =
   | { type: 'ORDERS_SCRAPED'; site: OrderSite; orders: OrderStatus[] }
   | { type: 'ALIEXPRESS_ORDERS_DISCOVERED'; orders: AliExpressDiscoveredOrder[] }
+  | { type: 'ALIEXPRESS_ORDER_DETAILS_SCRAPED'; details: AliExpressOrderDetailsResult }
   | { type: 'ALIEXPRESS_TRACKING_SCRAPED'; tracking: AliExpressTrackingResult }
   | { type: 'ALIEXPRESS_AUTH_FAILED' }
   | {

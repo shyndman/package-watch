@@ -69,8 +69,10 @@ describe('background scrape status', () => {
     vi.doMock('../lib/background/aliexpress', () => ({
       performAliExpressScrape: vi.fn(),
       handleAliExpressOrdersDiscovered: vi.fn(),
+      handleAliExpressOrderDetailsMessage: vi.fn(),
       handleAliExpressTrackingMessage: vi.fn(),
       handleAliExpressAuthFailed: vi.fn(),
+      handleAliExpressOrderDetailsParseFailure: vi.fn(),
     }));
     vi.doMock('../lib/background/scheduler', async () => {
       const actual = await vi.importActual<typeof import('../lib/background/scheduler')>(
@@ -116,8 +118,10 @@ describe('background scrape status', () => {
     vi.doMock('../lib/background/aliexpress', () => ({
       performAliExpressScrape: vi.fn(),
       handleAliExpressOrdersDiscovered: vi.fn(),
+      handleAliExpressOrderDetailsMessage: vi.fn(),
       handleAliExpressTrackingMessage: vi.fn(),
       handleAliExpressAuthFailed: vi.fn(),
+      handleAliExpressOrderDetailsParseFailure: vi.fn(),
     }));
     vi.doMock('../lib/background/scheduler', async () => {
       const actual = await vi.importActual<typeof import('../lib/background/scheduler')>(
@@ -180,8 +184,10 @@ describe('background scrape status', () => {
     vi.doMock('../lib/background/aliexpress', () => ({
       performAliExpressScrape: vi.fn(),
       handleAliExpressOrdersDiscovered: vi.fn(),
+      handleAliExpressOrderDetailsMessage: vi.fn(),
       handleAliExpressTrackingMessage: vi.fn(),
       handleAliExpressAuthFailed: vi.fn(),
+      handleAliExpressOrderDetailsParseFailure: vi.fn(),
     }));
     vi.doMock('../lib/background/scheduler', async () => {
       const actual = await vi.importActual<typeof import('../lib/background/scheduler')>(
@@ -210,6 +216,54 @@ describe('background scrape status', () => {
       isScrapeInProgress: false,
     });
   });
+
+  it('routes AliExpress order details message to handler', async () => {
+    const storageStub = makeStorageStub();
+    vi.doMock('@wxt-dev/storage', () => storageStub);
+
+    const handleAliExpressOrderDetailsMessage = vi.fn();
+
+    vi.doMock('../lib/background/amazon', async () => {
+      const actual = await vi.importActual<typeof import('../lib/background/amazon')>(
+        '../lib/background/amazon'
+      );
+      return {
+        ...actual,
+        performAmazonScrape: vi.fn(),
+      };
+    });
+    vi.doMock('../lib/background/aliexpress', () => ({
+      performAliExpressScrape: vi.fn(),
+      handleAliExpressOrdersDiscovered: vi.fn(),
+      handleAliExpressOrderDetailsMessage,
+      handleAliExpressTrackingMessage: vi.fn(),
+      handleAliExpressAuthFailed: vi.fn(),
+      handleAliExpressOrderDetailsParseFailure: vi.fn(),
+      handleAliExpressTrackingParseFailure: vi.fn(),
+    }));
+
+    const { default: entrypoint } = await import('../entrypoints/background');
+    initBackgroundEntrypoint(entrypoint);
+
+    const details = {
+      orderId: '8207771346365504',
+      productTitle: 'PD65W Step Down Module',
+      productUrl: 'https://www.aliexpress.com/item/1005006935868690.html',
+    };
+
+    await fakeBrowser.runtime.onMessage.trigger(
+      { type: 'ALIEXPRESS_ORDER_DETAILS_SCRAPED', details },
+      { tab: { id: 42 } }
+    );
+    await flushPromises();
+
+    expect(handleAliExpressOrderDetailsMessage).toHaveBeenCalledTimes(1);
+    expect(handleAliExpressOrderDetailsMessage).toHaveBeenCalledWith(
+      details,
+      42,
+      expect.any(Object)
+    );
+  });
 });
 
 describe('background parse failure notifications', () => {
@@ -229,9 +283,11 @@ describe('background parse failure notifications', () => {
     vi.doMock('../lib/background/aliexpress', () => ({
       performAliExpressScrape: vi.fn(),
       handleAliExpressOrdersDiscovered: vi.fn(),
+      handleAliExpressOrderDetailsMessage: vi.fn(),
       handleAliExpressTrackingMessage: vi.fn(),
       handleAliExpressAuthFailed: vi.fn(),
       handleAliExpressTrackingParseFailure: vi.fn(),
+      handleAliExpressOrderDetailsParseFailure: vi.fn(),
     }));
     vi.doMock('../lib/background/notifications', () => ({
       sendParseFailureNotification,

@@ -6,11 +6,11 @@ Users want to track packages from AliExpress in addition to Amazon. AliExpress o
 
 ## What Changes
 
-- Add AliExpress order list and tracking page scraping (new content scripts)
+- Add AliExpress order list, order details, and tracking page scraping (new content scripts)
 - Introduce multi-site architecture with `OrderSite` type discriminator
 - Site-namespaced storage for independent state per retailer
 - Separate alarms per site with configurable polling intervals
-- Two-phase AliExpress scraping: order list discovery → tracking page details
+- Three-phase AliExpress scraping: order list discovery → order details for product info → tracking page details
 - Auth detection to notify when AliExpress session expires
 - AliExpress notifications on **all** status changes (vs Amazon delivery-only)
 
@@ -23,4 +23,5 @@ Users want to track packages from AliExpress in addition to Amazon. AliExpress o
   - `entrypoints/background.ts` - Multi-site orchestration
   - `wxt.config.ts` - Add AliExpress host permissions
   - New: `entrypoints/aliexpress-orders.content.ts`
+  - New: `entrypoints/aliexpress-order-details.content.ts`
   - New: `entrypoints/aliexpress-tracking.content.ts`

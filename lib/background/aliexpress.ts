@@ -1,5 +1,6 @@
 import type {
   AliExpressDiscoveredOrder,
+  AliExpressOrderDetailsResult,
   AliExpressTrackingResult,
   OrderSite,
   OrderStatus,
@@ -7,6 +8,8 @@ import type {
 import { ALIEXPRESS_SITE, SCRAPE_TIMEOUT_MS, getSiteLabel } from './scheduler';
 
 const ALIEXPRESS_ORDERS_URL = 'https://www.aliexpress.com/p/order/index.html';
+const ALIEXPRESS_ORDER_DETAILS_URL_BASE =
+  'https://www.aliexpress.com/p/order/detail.html?orderId=';
 const ALIEXPRESS_TRACKING_URL_BASE =
   'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=';
 
@@ -39,9 +42,17 @@ type AliExpressDependencies = {
   clearScrapeTimeout: (site: OrderSite) => void;
   processOrdersForSite: (site: OrderSite, orders: OrderStatus[]) => Promise<void>;
   sendAuthFailedNotification: () => Promise<void>;
+  openOrderDetailsTab: (url: string) => Promise<number | null>;
   openTrackingTab: (url: string) => Promise<number | null>;
 };
 
+type PendingOrderDetailsRequest = {
+  resolve: (result: AliExpressOrderDetailsResult | null) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+  expectedOrderId: string;
+};
+
+const pendingAliExpressOrderDetails = new Map<number, PendingOrderDetailsRequest>();
 const pendingAliExpressTracking = new Map<number, PendingTrackingRequest>();
 
 export async function performAliExpressScrape(deps: AliExpressDependencies): Promise<void> {
@@ -70,9 +81,39 @@ export async function handleAliExpressOrdersDiscovered(
   deps.clearScrapeTimeout(ALIEXPRESS_SITE);
   await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
 
+  const orderDetailsResults = await scrapeAliExpressOrderDetailsForOrders(orders, deps);
   const trackingResults = await scrapeAliExpressTrackingForOrders(orders, deps);
-  const orderStatuses = buildAliExpressOrderStatuses(orders, trackingResults);
+  const orderStatuses = buildAliExpressOrderStatuses(orders, orderDetailsResults, trackingResults);
   await deps.processOrdersForSite(ALIEXPRESS_SITE, orderStatuses);
+}
+
+export function handleAliExpressOrderDetailsMessage(
+  details: AliExpressOrderDetailsResult,
+  tabId: number | undefined,
+  deps: AliExpressDependencies
+): void {
+  if (!tabId) {
+    return;
+  }
+
+  const pending = pendingAliExpressOrderDetails.get(tabId);
+  if (!pending) {
+    console.warn('[AliExpress Orders] Order details result for unknown tab', tabId);
+    return;
+  }
+
+  clearTimeout(pending.timeoutId);
+  pendingAliExpressOrderDetails.delete(tabId);
+  void deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+
+  if (pending.expectedOrderId !== details.orderId) {
+    console.warn('[AliExpress Orders] Order details order ID mismatch', {
+      expected: pending.expectedOrderId,
+      received: details.orderId,
+    });
+  }
+
+  pending.resolve(details);
 }
 
 export function handleAliExpressTrackingMessage(
@@ -104,6 +145,26 @@ export function handleAliExpressTrackingMessage(
   pending.resolve(tracking);
 }
 
+export async function handleAliExpressOrderDetailsParseFailure(
+  tabId: number | undefined,
+  deps: AliExpressDependencies
+): Promise<void> {
+  if (!tabId) {
+    return;
+  }
+
+  const pending = pendingAliExpressOrderDetails.get(tabId);
+  if (!pending) {
+    await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+    return;
+  }
+
+  clearTimeout(pending.timeoutId);
+  pendingAliExpressOrderDetails.delete(tabId);
+  await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+  pending.resolve(null);
+}
+
 export async function handleAliExpressTrackingParseFailure(
   tabId: number | undefined,
   deps: AliExpressDependencies
@@ -122,6 +183,60 @@ export async function handleAliExpressTrackingParseFailure(
   pendingAliExpressTracking.delete(tabId);
   await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
   pending.resolve(null);
+}
+
+async function scrapeAliExpressOrderDetailsForOrders(
+  orders: AliExpressDiscoveredOrder[],
+  deps: AliExpressDependencies
+): Promise<AliExpressOrderDetailsResult[]> {
+  const results: AliExpressOrderDetailsResult[] = [];
+
+  for (const order of orders) {
+    const detailsUrl = order.orderDetailsUrl ?? buildAliExpressOrderDetailsUrl(order.orderId);
+    if (!detailsUrl) {
+      continue;
+    }
+
+    const details = await scrapeAliExpressOrderDetails(detailsUrl, order.orderId, deps);
+    if (details) {
+      results.push(details);
+    }
+  }
+
+  return results;
+}
+
+async function scrapeAliExpressOrderDetails(
+  detailsUrl: string,
+  orderId: string,
+  deps: AliExpressDependencies
+): Promise<AliExpressOrderDetailsResult | null> {
+  const tabId = await deps.openOrderDetailsTab(detailsUrl);
+  if (!tabId) {
+    return null;
+  }
+
+  return waitForAliExpressOrderDetails(tabId, orderId, deps);
+}
+
+function waitForAliExpressOrderDetails(
+  tabId: number,
+  orderId: string,
+  deps: AliExpressDependencies
+): Promise<AliExpressOrderDetailsResult | null> {
+  return new Promise((resolve) => {
+    const timeoutId = setTimeout(() => {
+      pendingAliExpressOrderDetails.delete(tabId);
+      void deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+      resolve(null);
+    }, SCRAPE_TIMEOUT_MS);
+
+    pendingAliExpressOrderDetails.set(tabId, {
+      resolve,
+      timeoutId,
+      expectedOrderId: orderId,
+    });
+  });
 }
 
 async function scrapeAliExpressTrackingForOrders(
@@ -183,25 +298,36 @@ function waitForAliExpressTracking(
 
 function buildAliExpressOrderStatuses(
   orders: AliExpressDiscoveredOrder[],
+  orderDetailsResults: AliExpressOrderDetailsResult[],
   trackingResults: AliExpressTrackingResult[]
 ): OrderStatus[] {
+  const detailsByOrderId = new Map(
+    orderDetailsResults.map((details) => [details.orderId, details])
+  );
   const trackingByOrderId = new Map(
     trackingResults.map((tracking) => [tracking.orderId, tracking])
   );
 
   return orders.map((order) => {
     const tracking = trackingByOrderId.get(order.orderId) ?? null;
+    const details = detailsByOrderId.get(order.orderId) ?? null;
     const statusDetail = buildAliExpressStatusDetail(tracking);
     const estimatedDelivery = tracking?.estimatedDelivery ?? null;
+    const productTitles = details?.productTitle ? [details.productTitle] : [];
+    const productUrls = details?.productUrl ? [details.productUrl] : [];
+
+    if (!details) {
+      console.warn('[AliExpress Orders] Missing order details for', order.orderId);
+    }
 
     return {
       site: ALIEXPRESS_SITE,
       orderId: order.orderId,
       status: tracking?.currentStatus ?? order.highLevelStatus,
       statusDetail,
-      productTitles: order.productTitles,
-      productUrls: order.productUrls,
-      orderUrl: order.trackingUrl ?? buildAliExpressTrackingUrl(order.orderId),
+      productTitles,
+      productUrls,
+      orderUrl: order.orderDetailsUrl ?? buildAliExpressOrderDetailsUrl(order.orderId),
       orderDate: order.orderDate,
       isDeliveryExpectedToday: isEstimatedDeliveryToday(estimatedDelivery),
       isDelivered: tracking?.isDelivered ?? order.highLevelStatus === 'Completed',
@@ -246,4 +372,8 @@ function isEstimatedDeliveryToday(estimatedDelivery: string | null): boolean {
 
 function buildAliExpressTrackingUrl(orderId: string): string {
   return `${ALIEXPRESS_TRACKING_URL_BASE}${orderId}`;
+}
+
+function buildAliExpressOrderDetailsUrl(orderId: string): string {
+  return `${ALIEXPRESS_ORDER_DETAILS_URL_BASE}${orderId}`;
 }

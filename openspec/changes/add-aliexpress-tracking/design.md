@@ -14,6 +14,7 @@ The extension currently monitors Amazon.ca orders only. AliExpress has a differe
 - Play sound on delivery (same as Amazon)
 - Efficient polling: 2 hours default, 10 min when delivery expected today
 - Detect and notify when logged out of AliExpress
+- Extract product title + URL from the AliExpress order details page (first product only)
 
 **Non-Goals:**
 - Generic "add any site" plugin architecture (YAGNI)
@@ -22,11 +23,11 @@ The extension currently monitors Amazon.ca orders only. AliExpress has a differe
 
 ## Decisions
 
-### Two-Phase AliExpress Scraping
+### Three-Phase AliExpress Scraping
 
-The order list page (`/p/order/index.html`) only shows high-level status ("Awaiting delivery"), but users want granular updates. The tracking page (`/p/tracking/index.html?tradeOrderId={id}`) shows full status history.
+The order list page (`/p/order/index.html`) only shows high-level status ("Awaiting delivery"), and product titles are inconsistent there. The order details page (`/p/order/detail.html?orderId={id}`) has reliable product titles/links. The tracking page (`/p/tracking/index.html?tradeOrderId={id}`) shows full status history.
 
-**Approach:** Content script on order list discovers orders → Background opens tracking pages for non-completed orders → Tracking content scripts send granular status → Background merges and compares.
+**Approach:** Content script on order list discovers orders → Background opens order details pages to fetch product title/URL → Background opens tracking pages for non-completed orders → Tracking content scripts send granular status → Background merges and compares.
 
 **Alternative considered:** Only scrape order list page. Rejected because it would miss all intermediate status changes that users want.
 
@@ -62,11 +63,11 @@ Both sites play the notification sound when an order transitions to delivered.
 **Risk:** AliExpress DOM changes break scraping
 - **Mitigation:** Defensive parsing (null checks, try/catch per order), clear error logging
 
-**Risk:** Opening many tracking tabs simultaneously overloads browser
-- **Mitigation:** Process tracking pages sequentially, not in parallel
+**Risk:** Opening many details + tracking tabs simultaneously overloads browser
+- **Mitigation:** Process order details and tracking pages sequentially, not in parallel
 
-**Trade-off:** Two-phase scraping means more page loads
-- **Accepted:** Necessary for granular status, mitigated by 2-hour default interval
+**Trade-off:** Three-phase scraping means more page loads
+- **Accepted:** Necessary for reliable product info + granular status, mitigated by 2-hour default interval
 
 ## DOM Selectors
 
@@ -86,7 +87,7 @@ Both sites play the notification sound when an order transitions to delivered.
 | Order ID | `.order-item-header-right-info` | `.textContent.match(/Order ID:\s*(\d+)/)[1]` |
 | Order Date | `.order-item-header-right-info` | `.textContent.match(/Order date:\s*([^O]+)/)[1].trim()` |
 | Store Name | `a[href*="/store/"]` | `.textContent.trim()` |
-| Product Titles | `a[href*="/item/"]` | `.textContent.trim()` (multiple) |
+| Order Details URL | `a[href*="/p/order/detail.html"]` | `.href` |
 | Track URL | `a[href*="/tracking/"]` | `.href` (contains `tradeOrderId`) |
 
 **Auth Failure Detection:**
@@ -112,6 +113,15 @@ Both sites play the notification sound when an order transitions to delivered.
 | Status Title | `[class*="nodeTitle"]` | "Delivered", "Picked up by carrier" |
 | Description(s) | `[class*="nodeDesc"]` | "Package delivered. It has been left at..." |
 | Timestamp | `[class*="nodeTime"]` | "Dec 24, 11:59 EST" |
+
+### Order Details Page (`/p/order/detail.html?orderId={id}`)
+
+**Order Item Elements:**
+
+| Data | Selector | Extraction |
+|------|----------|------------|
+| First Product Title | `.order-detail-item-content-info .item-title a` | `.textContent.trim()` (first match) |
+| First Product URL | `.order-detail-item-content-info .item-title a` | `.href` (first match) |
 
 **Note:** Tracking page classes have hash suffixes (e.g., `logistic-info-v2--nodeTitle--2rejjVx`) that may change. Use `[class*="..."]` partial matching.
 
@@ -159,6 +169,7 @@ async function waitForElement(selector: string): Promise<Element | null> {
 ```
 
 - **Order list page:** Wait for `.order-item` elements
+- **Order details page:** Wait for `.order-detail-item-content-info .item-title a` element
 - **Tracking page:** Wait for `[class*="arrival-time-v2--title"]` element
 
 ### Message Types
@@ -168,7 +179,9 @@ Add to `lib/types.ts`:
 ```typescript
 // Discovered orders from order list page (phase 1)
 | { type: 'ALIEXPRESS_ORDERS_DISCOVERED'; orders: AliExpressDiscoveredOrder[] }
-// Tracking details from tracking page (phase 2)
+// Product details from order detail page (phase 2)
+| { type: 'ALIEXPRESS_ORDER_DETAILS_SCRAPED'; details: AliExpressOrderDetailsResult }
+// Tracking details from tracking page (phase 3)
 | { type: 'ALIEXPRESS_TRACKING_SCRAPED'; tracking: AliExpressTrackingResult }
 // Auth failure detected
 | { type: 'ALIEXPRESS_AUTH_FAILED' }
@@ -178,8 +191,14 @@ interface AliExpressDiscoveredOrder {
   highLevelStatus: 'Awaiting delivery' | 'Completed';
   orderDate: string;           // ISO date string
   storeName: string;
-  productTitles: string[];
+  orderDetailsUrl: string | null;
   trackingUrl: string | null;  // null for completed orders
+}
+
+interface AliExpressOrderDetailsResult {
+  orderId: string;
+  productTitle: string;
+  productUrl: string;
 }
 
 interface AliExpressTrackingResult {
@@ -192,7 +211,7 @@ interface AliExpressTrackingResult {
 }
 ```
 
-### Two-Phase Scrape Flow
+### Three-Phase Scrape Flow
 
 ```
 1. Background creates alarm "scrape-aliexpress"
@@ -201,12 +220,17 @@ interface AliExpressTrackingResult {
 4. Content script sends ALIEXPRESS_ORDERS_DISCOVERED
    - If zero orders + no greeting → send ALIEXPRESS_AUTH_FAILED instead
 5. Background receives discovered orders, closes tab
-6. For each order where highLevelStatus !== 'Completed':
+6. For each order:
+   a. Open tab: /p/order/detail.html?orderId={orderId}
+   b. Wait for ALIEXPRESS_ORDER_DETAILS_SCRAPED message
+   c. Close tab
+   d. Merge product title + URL (first product) into order data
+7. For each order where highLevelStatus !== 'Completed':
    a. Open tab: /p/tracking/index.html?tradeOrderId={orderId}
    b. Wait for ALIEXPRESS_TRACKING_SCRAPED message
    c. Close tab
    d. Merge tracking into order data
-7. After all tracking pages processed:
+8. After all tracking pages processed:
    a. Build final OrderStatus[] array
    b. Call detectChanges(orders, 'aliexpress')
    c. Send notifications for changed orders

@@ -38,11 +38,22 @@ The system SHALL scrape the AliExpress order list page to discover active orders
   - Order ID (from "Order ID: XXXX" text)
   - High-level status ("Awaiting delivery" or "Completed")
   - Order date (from "Order date: Dec 17, 2025" text)
-  - Product titles (from product links)
+  - Order details page URL (from the "Order details" link)
+  - Tracking page URL (from the "Track order" link, when present)
 
 #### Scenario: Auth failure detection
 - **WHEN** the order list page shows a login prompt instead of orders
 - **THEN** the system SHALL send a notification: "AliExpress session expired - please log in"
+
+### Requirement: AliExpress Order Details Product Info
+
+The system SHALL scrape the AliExpress order details page to obtain product info.
+
+#### Scenario: Order details parsing
+- **WHEN** an order details page loads at `https://www.aliexpress.com/p/order/detail.html?orderId={orderId}`
+- **THEN** the system SHALL extract:
+  - The first product title
+  - The first product page URL
 
 ### Requirement: AliExpress Granular Status Tracking
 
