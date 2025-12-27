@@ -1,4 +1,3 @@
-import { Temporal } from '@js-temporal/polyfill';
 import type { AliExpressDiscoveredOrder, MessageType } from '../lib/types';
 
 export default defineContentScript({
@@ -204,13 +203,8 @@ function parseDateToISO(dateText: string): string | null {
     return null;
   }
 
-  const now = new Date();
-  const year = yearRaw ? parseInt(yearRaw, 10) : now.getFullYear();
-  const plainDate = Temporal.PlainDate.from({
-    year,
-    month,
-    day: parseInt(dayRaw, 10),
-  });
+  const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();
+  const day = parseInt(dayRaw, 10);
 
-  return plainDate.toString();
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
