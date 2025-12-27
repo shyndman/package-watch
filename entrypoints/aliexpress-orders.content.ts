@@ -1,4 +1,5 @@
 import { toISODateString } from '../lib/date';
+import { ParseFailureError, isParseFailureError } from '../lib/parse-failure';
 import type { AliExpressDiscoveredOrder, MessageType } from '../lib/types';
 
 export default defineContentScript({
@@ -7,21 +8,36 @@ export default defineContentScript({
   async main() {
     console.log('[AliExpress Orders] Content script loaded');
 
-    const { orders, isAuthFailure } = await waitForOrdersAndParse();
+    try {
+      const { orders, isAuthFailure } = await waitForOrdersAndParse();
 
-    if (isAuthFailure) {
-      console.warn('[AliExpress Orders] Auth failure detected');
+      if (isAuthFailure) {
+        console.warn('[AliExpress Orders] Auth failure detected');
+        browser.runtime.sendMessage({
+          type: 'ALIEXPRESS_AUTH_FAILED',
+        } satisfies MessageType);
+        return;
+      }
+
+      console.log(`[AliExpress Orders] Found ${orders.length} orders`);
       browser.runtime.sendMessage({
-        type: 'ALIEXPRESS_AUTH_FAILED',
+        type: 'ALIEXPRESS_ORDERS_DISCOVERED',
+        orders,
       } satisfies MessageType);
-      return;
-    }
+    } catch (error) {
+      if (!isParseFailureError(error)) {
+        throw error;
+      }
 
-    console.log(`[AliExpress Orders] Found ${orders.length} orders`);
-    browser.runtime.sendMessage({
-      type: 'ALIEXPRESS_ORDERS_DISCOVERED',
-      orders,
-    } satisfies MessageType);
+      console.error('[AliExpress Orders] Parse failure:', error);
+      browser.runtime.sendMessage({
+        type: 'PARSE_FAILURE',
+        site: 'aliexpress',
+        phase: 'aliexpress-orders',
+        reason: error.reason ?? error.message,
+        url: error.url ?? location.href,
+      } satisfies MessageType);
+    }
   },
 });
 
@@ -74,7 +90,11 @@ async function waitForOrdersAndParse(): Promise<{
   }
 
   console.warn('[AliExpress Orders] Timed out waiting for order items');
-  return { orders: [], isAuthFailure: isAuthFailure() };
+  if (isAuthFailure()) {
+    return { orders: [], isAuthFailure: true };
+  }
+
+  throw new ParseFailureError('Timed out waiting for order items', undefined, location.href);
 }
 
 function hasOrderItems(): boolean {
@@ -93,34 +113,21 @@ function isAuthFailure(): boolean {
 
 function parseOrderItems(): AliExpressDiscoveredOrder[] {
   const orderItems = document.querySelectorAll(ORDER_ITEM_SELECTOR);
-  const orders: AliExpressDiscoveredOrder[] = [];
-
-  for (const [index, item] of Array.from(orderItems).entries()) {
-    try {
-      const order = parseOrderItem(item as HTMLElement);
-      if (order) {
-        orders.push(order);
-      }
-    } catch (e) {
-      console.error('[AliExpress Orders] Error parsing order item:', {
-        index,
-        error: e,
-      });
-    }
+  if (orderItems.length === 0) {
+    throw new ParseFailureError('No order items found', undefined, location.href);
   }
 
-  return orders;
+  return Array.from(orderItems).map((item, index) =>
+    parseOrderItem(item as HTMLElement, index)
+  );
 }
 
-function parseOrderItem(item: HTMLElement): AliExpressDiscoveredOrder | null {
-  const highLevelStatus = parseHighLevelStatus(item);
-  const orderInfo = parseOrderInfo(item);
-  if (!orderInfo) {
-    return null;
-  }
+function parseOrderItem(item: HTMLElement, index: number): AliExpressDiscoveredOrder {
+  const highLevelStatus = parseHighLevelStatus(item, index);
+  const orderInfo = parseOrderInfo(item, index);
 
   const storeName = parseStoreName(item);
-  const { productTitles, productUrls } = parseProducts(item);
+  const { productTitles, productUrls } = parseProducts(item, orderInfo.orderId);
   const trackingUrl = parseTrackingUrl(item);
 
   return {
@@ -134,32 +141,58 @@ function parseOrderItem(item: HTMLElement): AliExpressDiscoveredOrder | null {
   };
 }
 
-function parseHighLevelStatus(item: HTMLElement): 'Awaiting delivery' | 'Completed' {
+function parseHighLevelStatus(
+  item: HTMLElement,
+  index: number
+): 'Awaiting delivery' | 'Completed' {
   const statusEl = item.querySelector(ORDER_STATUS_SELECTOR);
-  const statusText = statusEl?.textContent?.trim() ?? '';
-
   if (!statusEl) {
-    console.warn('[AliExpress Orders] Status element not found');
+    throw new ParseFailureError(
+      `Order item ${index + 1}: missing status element`,
+      undefined,
+      location.href
+    );
+  }
+
+  const statusText = statusEl.textContent?.trim();
+  if (!statusText) {
+    throw new ParseFailureError(
+      `Order item ${index + 1}: empty status text`,
+      undefined,
+      location.href
+    );
   }
 
   return statusText === 'Completed' ? 'Completed' : 'Awaiting delivery';
 }
 
 function parseOrderInfo(
-  item: HTMLElement
-): { orderId: string; orderDate: string | null } | null {
+  item: HTMLElement,
+  index: number
+): { orderId: string; orderDate: string } {
   const infoEl = item.querySelector(ORDER_INFO_SELECTOR);
   const infoText = infoEl?.textContent ?? '';
   const orderIdMatch = infoText.match(ORDER_ID_REGEX);
   const orderId = orderIdMatch?.[1]?.trim();
   if (!orderId) {
-    console.warn('[AliExpress Orders] Could not find order ID, skipping item');
-    return null;
+    throw new ParseFailureError(
+      `Order item ${index + 1}: missing order ID`,
+      undefined,
+      location.href
+    );
   }
 
   const orderDateMatch = infoText.match(ORDER_DATE_REGEX);
-  const orderDateText = orderDateMatch?.[1]?.trim() ?? null;
-  const orderDate = orderDateText ? parseDateToISO(orderDateText) : null;
+  const orderDateText = orderDateMatch?.[1]?.trim();
+  if (!orderDateText) {
+    throw new ParseFailureError(
+      `Order ${orderId}: missing order date`,
+      undefined,
+      location.href
+    );
+  }
+
+  const orderDate = parseDateToISO(orderDateText, orderId);
 
   return { orderId, orderDate };
 }
@@ -168,18 +201,42 @@ function parseStoreName(item: HTMLElement): string {
   return item.querySelector(STORE_LINK_SELECTOR)?.textContent?.trim() ?? '';
 }
 
-function parseProducts(item: HTMLElement): { productTitles: string[]; productUrls: string[] } {
+function parseProducts(
+  item: HTMLElement,
+  orderId: string
+): { productTitles: string[]; productUrls: string[] } {
   const productTitles: string[] = [];
   const productUrls: string[] = [];
   const productEls = item.querySelectorAll(PRODUCT_LINK_SELECTOR);
 
-  for (const el of productEls) {
+  for (const [productIndex, el] of Array.from(productEls).entries()) {
     const title = el.textContent?.trim();
     const href = (el as HTMLAnchorElement).href;
-    if (title) {
-      productTitles.push(title);
-      productUrls.push(href);
+    if (!title) {
+      throw new ParseFailureError(
+        `Order ${orderId}: product ${productIndex + 1} title missing`,
+        undefined,
+        location.href
+      );
     }
+    if (!href) {
+      throw new ParseFailureError(
+        `Order ${orderId}: product ${productIndex + 1} URL missing`,
+        undefined,
+        location.href
+      );
+    }
+
+    productTitles.push(title);
+    productUrls.push(href);
+  }
+
+  if (productTitles.length === 0) {
+    throw new ParseFailureError(
+      `Order ${orderId}: no product titles found`,
+      undefined,
+      location.href
+    );
   }
 
   return { productTitles, productUrls };
@@ -190,18 +247,24 @@ function parseTrackingUrl(item: HTMLElement): string | null {
   return trackingEl?.href ?? null;
 }
 
-function parseDateToISO(dateText: string): string | null {
+function parseDateToISO(dateText: string, orderId: string): string {
   const match = dateText.match(/^([A-Za-z]{3})\s+(\d{1,2}),?\s*(\d{4})?$/);
   if (!match) {
-    console.warn(`[AliExpress Orders] Could not parse date: ${dateText}`);
-    return null;
+    throw new ParseFailureError(
+      `Order ${orderId}: could not parse date: ${dateText}`,
+      undefined,
+      location.href
+    );
   }
 
   const [, monthAbbr, dayRaw, yearRaw] = match;
   const month = MONTH_MAP[monthAbbr.toLowerCase()];
   if (!month) {
-    console.warn(`[AliExpress Orders] Unknown month: ${monthAbbr}`);
-    return null;
+    throw new ParseFailureError(
+      `Order ${orderId}: unknown month: ${monthAbbr}`,
+      undefined,
+      location.href
+    );
   }
 
   const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();

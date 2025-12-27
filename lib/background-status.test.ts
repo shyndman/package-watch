@@ -38,7 +38,7 @@ const initBackgroundEntrypoint = (entry: unknown) => {
   throw new Error('Unexpected background entrypoint shape');
 };
 
-let fakeBrowser: Awaited<ReturnType<typeof import('wxt/testing')>>['fakeBrowser'];
+let fakeBrowser: Awaited<typeof import('wxt/testing')>['fakeBrowser'];
 
 beforeEach(async () => {
   ({ fakeBrowser } = await import('wxt/testing'));
@@ -209,5 +209,104 @@ describe('background scrape status', () => {
       lastAlarmFiredAt: expect.any(Number),
       isScrapeInProgress: false,
     });
+  });
+});
+
+describe('background parse failure notifications', () => {
+  const setupBackground = async (sendParseFailureNotification: ReturnType<typeof vi.fn>) => {
+    const storageStub = makeStorageStub();
+    vi.doMock('@wxt-dev/storage', () => storageStub);
+
+    vi.doMock('../lib/background/amazon', async () => {
+      const actual = await vi.importActual<typeof import('../lib/background/amazon')>(
+        '../lib/background/amazon'
+      );
+      return {
+        ...actual,
+        performAmazonScrape: vi.fn(),
+      };
+    });
+    vi.doMock('../lib/background/aliexpress', () => ({
+      performAliExpressScrape: vi.fn(),
+      handleAliExpressOrdersDiscovered: vi.fn(),
+      handleAliExpressTrackingMessage: vi.fn(),
+      handleAliExpressAuthFailed: vi.fn(),
+      handleAliExpressTrackingParseFailure: vi.fn(),
+    }));
+    vi.doMock('../lib/background/notifications', () => ({
+      sendParseFailureNotification,
+      sendNotification: vi.fn(),
+      sendAuthFailedNotification: vi.fn(),
+    }));
+    vi.doMock('../lib/background/scheduler', async () => {
+      const actual = await vi.importActual<typeof import('../lib/background/scheduler')>(
+        '../lib/background/scheduler'
+      );
+      return {
+        ...actual,
+        scheduleNextCheck: scheduleNextCheckSpy,
+      };
+    });
+
+    const { default: entrypoint } = await import('../entrypoints/background');
+    initBackgroundEntrypoint(entrypoint);
+
+    return storageStub;
+  };
+
+  it('sends parse failure notification with reason', async () => {
+    const sendParseFailureNotification = vi.fn();
+    await setupBackground(sendParseFailureNotification);
+
+    await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
+
+    await fakeBrowser.runtime.onMessage.trigger(
+      {
+        type: 'PARSE_FAILURE',
+        site: 'amazon',
+        phase: 'amazon-orders',
+        reason: 'Missing order ID',
+        url: 'https://www.amazon.ca/example',
+      },
+      { tab: { id: 1 } }
+    );
+    await flushPromises();
+
+    expect(sendParseFailureNotification).toHaveBeenCalledTimes(1);
+    expect(sendParseFailureNotification).toHaveBeenCalledWith(
+      'amazon',
+      'Missing order ID',
+      'https://www.amazon.ca/example'
+    );
+  });
+
+  it('aggregates parse failure notifications and sends when reason is missing', async () => {
+    const sendParseFailureNotification = vi.fn();
+    await setupBackground(sendParseFailureNotification);
+
+    await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
+
+    await fakeBrowser.runtime.onMessage.trigger(
+      {
+        type: 'PARSE_FAILURE',
+        site: 'amazon',
+        phase: 'amazon-orders',
+      },
+      { tab: { id: 1 } }
+    );
+    await fakeBrowser.runtime.onMessage.trigger(
+      {
+        type: 'PARSE_FAILURE',
+        site: 'amazon',
+        phase: 'amazon-orders',
+        reason: 'Another failure',
+        url: 'https://www.amazon.ca/example-2',
+      },
+      { tab: { id: 1 } }
+    );
+    await flushPromises();
+
+    expect(sendParseFailureNotification).toHaveBeenCalledTimes(1);
+    expect(sendParseFailureNotification).toHaveBeenCalledWith('amazon', undefined, undefined);
   });
 });

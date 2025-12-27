@@ -1,3 +1,4 @@
+import { ParseFailureError, isParseFailureError } from '../lib/parse-failure';
 import type { AliExpressTrackingResult, MessageType } from '../lib/types';
 
 export default defineContentScript({
@@ -6,16 +7,27 @@ export default defineContentScript({
   async main() {
     console.log('[AliExpress Tracking] Content script loaded');
 
-    const tracking = await waitForTrackingAndParse();
-    if (!tracking) {
-      console.warn('[AliExpress Tracking] No tracking data parsed');
-      return;
-    }
+    try {
+      const tracking = await waitForTrackingAndParse();
 
-    browser.runtime.sendMessage({
-      type: 'ALIEXPRESS_TRACKING_SCRAPED',
-      tracking,
-    } satisfies MessageType);
+      browser.runtime.sendMessage({
+        type: 'ALIEXPRESS_TRACKING_SCRAPED',
+        tracking,
+      } satisfies MessageType);
+    } catch (error) {
+      if (!isParseFailureError(error)) {
+        throw error;
+      }
+
+      console.error('[AliExpress Tracking] Parse failure:', error);
+      browser.runtime.sendMessage({
+        type: 'PARSE_FAILURE',
+        site: 'aliexpress',
+        phase: 'aliexpress-tracking',
+        reason: error.reason ?? error.message,
+        url: error.url ?? location.href,
+      } satisfies MessageType);
+    }
   },
 });
 
@@ -30,8 +42,23 @@ const NODE_TIME_SELECTOR = '[class*="nodeTime"]';
 const ORDER_ID_PARAM = 'tradeOrderId';
 
 const ESTIMATED_DELIVERY_REGEX = /Estimated delivery:\s*([^,]+)/i;
+const ESTIMATED_DELIVERY_DATE_REGEX = /([A-Za-z]{3})\s+(\d{1,2})/;
+const ESTIMATED_DELIVERY_MONTHS = new Set([
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
+]);
 
-async function waitForTrackingAndParse(): Promise<AliExpressTrackingResult | null> {
+async function waitForTrackingAndParse(): Promise<AliExpressTrackingResult> {
   const startTime = Date.now();
 
   while (Date.now() - startTime < MAX_WAIT_MS) {
@@ -43,15 +70,13 @@ async function waitForTrackingAndParse(): Promise<AliExpressTrackingResult | nul
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 
-  console.warn('[AliExpress Tracking] Timed out waiting for tracking header');
-  return null;
+  throw new ParseFailureError('Timed out waiting for tracking header', undefined, location.href);
 }
 
-function parseTrackingPage(headerEl: HTMLElement): AliExpressTrackingResult | null {
+function parseTrackingPage(headerEl: HTMLElement): AliExpressTrackingResult {
   const orderId = getOrderId();
   if (!orderId) {
-    console.error('[AliExpress Tracking] Missing tradeOrderId in URL');
-    return null;
+    throw new ParseFailureError('Missing tradeOrderId in URL', undefined, location.href);
   }
 
   const { isDelivered, estimatedDelivery } = parseHeaderInfo(headerEl);
@@ -76,9 +101,30 @@ function parseHeaderInfo(headerEl: HTMLElement): {
   estimatedDelivery: string | null;
 } {
   const headerText = headerEl.textContent?.trim() ?? '';
+  const hasEstimatedDelivery = headerText.toLowerCase().includes('estimated delivery');
   const isDelivered = headerText.toLowerCase().includes('delivered');
   const estimatedDeliveryMatch = headerText.match(ESTIMATED_DELIVERY_REGEX);
   const estimatedDelivery = estimatedDeliveryMatch?.[1]?.trim() ?? null;
+
+  if (hasEstimatedDelivery) {
+    if (!estimatedDelivery) {
+      throw new ParseFailureError(
+        'Estimated delivery label found but no date parsed',
+        undefined,
+        location.href
+      );
+    }
+
+    const dateMatch = estimatedDelivery.match(ESTIMATED_DELIVERY_DATE_REGEX);
+    const month = dateMatch?.[1]?.toLowerCase() ?? null;
+    if (!dateMatch || !month || !ESTIMATED_DELIVERY_MONTHS.has(month)) {
+      throw new ParseFailureError(
+        `Could not parse estimated delivery date: ${estimatedDelivery}`,
+        undefined,
+        location.href
+      );
+    }
+  }
 
   return { isDelivered, estimatedDelivery };
 }
@@ -92,7 +138,7 @@ function parseCurrentNode(isDelivered: boolean): {
   const currentNode = nodes.length > 0 ? (nodes[0] as HTMLElement) : null;
 
   if (!currentNode) {
-    console.warn('[AliExpress Tracking] No timeline nodes found');
+    throw new ParseFailureError('No timeline nodes found', undefined, location.href);
   }
 
   const statusTitle =

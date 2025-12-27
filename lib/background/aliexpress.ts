@@ -104,6 +104,26 @@ export function handleAliExpressTrackingMessage(
   pending.resolve(tracking);
 }
 
+export async function handleAliExpressTrackingParseFailure(
+  tabId: number | undefined,
+  deps: AliExpressDependencies
+): Promise<void> {
+  if (!tabId) {
+    return;
+  }
+
+  const pending = pendingAliExpressTracking.get(tabId);
+  if (!pending) {
+    await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+    return;
+  }
+
+  clearTimeout(pending.timeoutId);
+  pendingAliExpressTracking.delete(tabId);
+  await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+  pending.resolve(null);
+}
+
 async function scrapeAliExpressTrackingForOrders(
   orders: AliExpressDiscoveredOrder[],
   deps: AliExpressDependencies

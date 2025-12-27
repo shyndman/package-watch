@@ -34,15 +34,27 @@ export async function sendNotification(
   }
 }
 
-export async function sendParseFailureNotification(site: OrderSite): Promise<void> {
+export async function sendParseFailureNotification(
+  site: OrderSite,
+  reason?: string,
+  url?: string
+): Promise<void> {
   const title =
     site === AMAZON_SITE
       ? 'Amazon parsing may be broken'
       : 'AliExpress parsing may be broken';
-  const message =
+  const baseMessage =
     site === AMAZON_SITE
-      ? 'No orders found. The Amazon page structure may have changed.'
-      : 'No orders found. The AliExpress page structure may have changed.';
+      ? 'Parsing failed. The Amazon page structure may have changed.'
+      : 'Parsing failed. The AliExpress page structure may have changed.';
+  const messageParts = [baseMessage];
+  if (reason) {
+    messageParts.push(`Reason: ${reason}`);
+  }
+  if (url) {
+    messageParts.push(`URL: ${url}`);
+  }
+  const message = messageParts.join('\n');
 
   try {
     await browser.notifications.create({

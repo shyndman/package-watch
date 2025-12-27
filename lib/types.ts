@@ -1,5 +1,11 @@
 export type OrderSite = 'amazon' | 'aliexpress';
 
+export type ParseFailurePhase =
+  | 'amazon-orders'
+  | 'aliexpress-orders'
+  | 'aliexpress-tracking'
+  | 'background-parse';
+
 /**
  * Represents the status of a single order/shipment.
  */
@@ -75,5 +81,13 @@ export type MessageType =
   | { type: 'ALIEXPRESS_ORDERS_DISCOVERED'; orders: AliExpressDiscoveredOrder[] }
   | { type: 'ALIEXPRESS_TRACKING_SCRAPED'; tracking: AliExpressTrackingResult }
   | { type: 'ALIEXPRESS_AUTH_FAILED' }
+  | {
+      type: 'PARSE_FAILURE';
+      site: OrderSite;
+      phase: ParseFailurePhase;
+      reason?: string;
+      url?: string;
+      tabId?: number;
+    }
   | { type: 'SCRAPE_ERROR'; error: string }
   | { type: 'TRIGGER_SCRAPE' };

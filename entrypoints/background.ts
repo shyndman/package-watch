@@ -3,6 +3,7 @@ import { detectChanges, saveOrders, updateScrapeStatus } from '../lib/storage';
 import {
   handleAliExpressAuthFailed,
   handleAliExpressOrdersDiscovered,
+  handleAliExpressTrackingParseFailure,
   handleAliExpressTrackingMessage,
   performAliExpressScrape,
 } from '../lib/background/aliexpress';
@@ -27,6 +28,11 @@ const scrapeTabIdsBySite = new Map<OrderSite, Set<number>>([
 ]);
 
 const scrapeInProgressBySite: Record<OrderSite, boolean> = {
+  amazon: false,
+  aliexpress: false,
+};
+
+const parseFailureNotifiedBySite: Record<OrderSite, boolean> = {
   amazon: false,
   aliexpress: false,
 };
@@ -95,6 +101,11 @@ function handleMessage(message: MessageType, sender: Browser.runtime.MessageSend
     return;
   }
 
+  if (message.type === 'PARSE_FAILURE') {
+    void handleParseFailureMessage(message, sender);
+    return;
+  }
+
   if (message.type === 'SCRAPE_ERROR') {
     console.error('[Orders] Scrape error:', message.error);
     handleScrapeFailure(AMAZON_SITE);
@@ -107,6 +118,7 @@ async function startScrape(site: OrderSite): Promise<void> {
     return;
   }
 
+  parseFailureNotifiedBySite[site] = false;
   scrapeInProgressBySite[site] = true;
   await recordScrapeStart(site);
 
@@ -161,6 +173,10 @@ async function openOrderListTab(site: OrderSite, url: string): Promise<number | 
 }
 
 async function openTrackingTab(url: string): Promise<number | null> {
+  if (!scrapeInProgressBySite[ALIEXPRESS_SITE]) {
+    return null;
+  }
+
   try {
     const tab = await browser.tabs.create({
       url,
@@ -177,6 +193,47 @@ async function openTrackingTab(url: string): Promise<number | null> {
     console.error(`[${getSiteLabel(ALIEXPRESS_SITE)}] Error creating tracking tab:`, e);
     return null;
   }
+}
+
+async function handleParseFailureMessage(
+  message: Extract<MessageType, { type: 'PARSE_FAILURE' }>,
+  sender: Browser.runtime.MessageSender
+): Promise<void> {
+  const tabId = message.tabId ?? sender.tab?.id;
+  const label = getSiteLabel(message.site);
+
+  console.error(`[${label}] Parse failure (${message.phase})`, {
+    reason: message.reason,
+    url: message.url,
+    tabId,
+  });
+
+  if (message.site === ALIEXPRESS_SITE && message.phase === 'aliexpress-tracking') {
+    await handleAliExpressTrackingParseFailure(tabId, getAliExpressDeps());
+  } else if (tabId !== undefined) {
+    await closeScrapeTab(message.site, tabId);
+  }
+
+  await closeAllScrapeTabs(message.site);
+
+  if (!parseFailureNotifiedBySite[message.site]) {
+    parseFailureNotifiedBySite[message.site] = true;
+    await sendParseFailureNotification(message.site, message.reason, message.url);
+  }
+
+  if (scrapeInProgressBySite[message.site]) {
+    handleScrapeFailure(message.site);
+  }
+}
+
+async function closeAllScrapeTabs(site: OrderSite): Promise<void> {
+  const tabSet = scrapeTabIdsBySite.get(site);
+  if (!tabSet || tabSet.size === 0) {
+    return;
+  }
+
+  const tabIds = Array.from(tabSet);
+  await Promise.all(tabIds.map((tabId) => closeScrapeTab(site, tabId)));
 }
 
 function scheduleScrapeTimeout(site: OrderSite, tabId: number): void {
@@ -239,8 +296,9 @@ async function closeScrapeTab(site: OrderSite, tabId: number | undefined): Promi
 }
 
 async function processOrdersForSite(site: OrderSite, orders: OrderStatus[]): Promise<void> {
-  if (orders.length === 0) {
-    await sendParseFailureNotification(site);
+  if (parseFailureNotifiedBySite[site]) {
+    console.warn(`[${getSiteLabel(site)}] Parse failure already reported; skipping order save`);
+    return;
   }
 
   const { changed, isFirstRun, previousOrders } = await detectChanges(orders, site);
