@@ -12,6 +12,8 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "xpi:firefox": "wxt zip -b firefox && mv .output/browser-automations-0.0.0-firefox.zip .output/browser-automations.xpi",
+    "test": "vitest",
+    "typecheck": "vue-tsc --noEmit",
     "compile": "vue-tsc --noEmit",
     "postinstall": "wxt prepare"
   },
@@ -23,6 +25,7 @@
   "devDependencies": {
     "@wxt-dev/module-vue": "^1.0.2",
     "typescript": "^5.9.2",
+    "vitest": "^4.0.16",
     "vue-tsc": "^3.0.6",
     "wxt": "^0.20.6"
   }
