@@ -1,0 +1,11 @@
+## 1. Implementation
+- [ ] 1.1 Add `ParseFailureError` (and type guard) in a shared module (e.g., `lib/parse-failure.ts`).
+- [ ] 1.2 Extend `MessageType` with a `PARSE_FAILURE` message carrying `site`, `phase`, `reason?`, and `tabId?` (dependency for 1.4-1.8).
+- [ ] 1.3 Update `sendParseFailureNotification` to accept an optional reason string and include it in the notification body when present.
+- [ ] 1.4 Amazon orders content script: enforce required fields (order ID, status element, order date, product titles/URLs) and throw `ParseFailureError`; catch at the top-level scrape flow, log the exception object, send `PARSE_FAILURE`, and stop the run.
+- [ ] 1.5 AliExpress orders content script: enforce required fields (order ID, status element, order date, product titles/URLs) and throw `ParseFailureError`; catch, log, send `PARSE_FAILURE`, and stop the run.
+- [ ] 1.6 AliExpress tracking content script: enforce required elements (tracking header, timeline node, tradeOrderId) and throw `ParseFailureError`; catch, log, send `PARSE_FAILURE`, and stop the run.
+- [ ] 1.7 Background entrypoint: handle `PARSE_FAILURE`, aggregate notifications per site per scrape run, clear timeouts, close tabs, and mark the scrape as failed without saving orders.
+- [ ] 1.8 AliExpress background flow: on tracking parse failure, resolve the pending tracking request immediately and close the tracking tab.
+- [ ] 1.9 Tests: add/adjust background tests to cover parse failure notification with/without reason and aggregation behavior.
+- [ ] 1.10 Validation: run `pnpm test run`.
