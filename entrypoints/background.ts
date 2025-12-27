@@ -1,5 +1,5 @@
 import type { OrderStatus, MessageType } from '../lib/types';
-import { detectChanges, saveOrders, getStoredOrders } from '../lib/storage';
+import { detectChanges, saveOrders } from '../lib/storage';
 
 const ALARM_NAME = 'amazon-order-check';
 const AMAZON_ORDERS_URL = 'https://www.amazon.ca/gp/css/order-history';
@@ -93,14 +93,16 @@ async function handleScrapedOrders(
   }
 
   // Detect changes
-  const { changed, isFirstRun } = await detectChanges(orders);
+  const { changed, isFirstRun, previousOrders } = await detectChanges(orders);
 
   if (isFirstRun) {
     console.log('[Amazon Orders] First run, storing initial state');
   } else if (changed.length > 0) {
     console.log(`[Amazon Orders] ${changed.length} order(s) changed`);
     for (const order of changed) {
-      await sendNotification(order);
+      const prevOrder = previousOrders[order.orderId];
+      const shouldPlaySound = order.isDelivered && !prevOrder?.isDelivered;
+      await sendNotification(order, shouldPlaySound);
     }
   } else {
     console.log('[Amazon Orders] No changes detected');
@@ -113,7 +115,7 @@ async function handleScrapedOrders(
   scheduleNextCheck(orders);
 }
 
-async function sendNotification(order: OrderStatus): Promise<void> {
+async function sendNotification(order: OrderStatus, shouldPlaySound: boolean): Promise<void> {
   const productSummary =
     order.productTitles.length > 0
       ? order.productTitles[0].slice(0, 50) +
@@ -133,9 +135,10 @@ async function sendNotification(order: OrderStatus): Promise<void> {
       message,
     });
 
-    // Play notification sound
-    const audio = new Audio(browser.runtime.getURL('/assets/notification.mp3'));
-    audio.play();
+    if (shouldPlaySound) {
+      const audio = new Audio(browser.runtime.getURL('/assets/notification.mp3'));
+      audio.play();
+    }
   } catch (e) {
     console.error('[Amazon Orders] Error sending notification:', e);
   }

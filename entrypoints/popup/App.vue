@@ -5,7 +5,7 @@ import HelloWorld from '@/components/HelloWorld.vue';
 <template>
   <div>
     <a href="https://wxt.dev" target="_blank">
-      <img src="/wxt.svg" class="logo" alt="WXT logo" />
+      <img src="/icon/128.png" class="logo" alt="Browser Automations logo" />
     </a>
     <a href="https://vuejs.org/" target="_blank">
       <img src="@/assets/vue.svg" class="logo vue" alt="Vue logo" />

@@ -30,7 +30,11 @@ export async function saveOrders(orders: OrderStatus[]): Promise<void> {
  */
 export async function detectChanges(
   newOrders: OrderStatus[]
-): Promise<{ changed: OrderStatus[]; isFirstRun: boolean }> {
+): Promise<{
+  changed: OrderStatus[];
+  isFirstRun: boolean;
+  previousOrders: Record<string, OrderStatus>;
+}> {
   const stored = await getStoredOrders();
   const isFirstRun = Object.keys(stored.orders).length === 0;
 
@@ -49,5 +53,5 @@ export async function detectChanges(
     }
   }
 
-  return { changed, isFirstRun };
+  return { changed, isFirstRun, previousOrders: stored.orders };
 }
