@@ -1,19 +1,21 @@
 import { storage } from '@wxt-dev/storage';
 import type { OrderSite, OrderStatus, StoredOrderState } from './types';
 
-const ORDER_STATE_KEYS: Record<OrderSite, string> = {
+type StorageKey = `local:${string}`;
+
+const ORDER_STATE_KEYS: Record<OrderSite, StorageKey> = {
   amazon: 'local:amazonOrderState',
   aliexpress: 'local:aliexpressOrderState',
 };
 
-const LEGACY_AMAZON_STATE_KEY = 'local:orderState';
+const LEGACY_AMAZON_STATE_KEY: StorageKey = 'local:orderState';
 
 const DELIVERED_TERMINAL_BY_SITE: Record<OrderSite, boolean> = {
   amazon: true,
   aliexpress: true,
 };
 
-function getOrderStateKey(site: OrderSite): string {
+function getOrderStateKey(site: OrderSite): StorageKey {
   return ORDER_STATE_KEYS[site];
 }
 
