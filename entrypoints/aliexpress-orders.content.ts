@@ -1,3 +1,4 @@
+import { toISODateString } from '../lib/date';
 import type { AliExpressDiscoveredOrder, MessageType } from '../lib/types';
 
 export default defineContentScript({
@@ -204,7 +205,6 @@ function parseDateToISO(dateText: string): string | null {
   }
 
   const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();
-  const day = parseInt(dayRaw, 10);
 
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return toISODateString(year, month, parseInt(dayRaw, 10));
 }

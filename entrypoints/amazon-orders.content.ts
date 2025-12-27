@@ -1,4 +1,4 @@
-import { Temporal } from '@js-temporal/polyfill';
+import { toISODateString } from '../lib/date';
 import type { OrderSite, OrderStatus, MessageType } from '../lib/types';
 
 export default defineContentScript({
@@ -202,18 +202,12 @@ function parseDateToISO(dateText: string): string | null {
     return null;
   }
 
-  const [, monthName, day, year] = match;
+  const [, monthName, dayRaw, yearRaw] = match;
   const month = MONTH_MAP[monthName.toLowerCase()];
   if (!month) {
     console.warn(`[Amazon Orders] Unknown month: ${monthName}`);
     return null;
   }
 
-  const plainDate = Temporal.PlainDate.from({
-    year: parseInt(year, 10),
-    month,
-    day: parseInt(day, 10),
-  });
-
-  return plainDate.toString();
+  return toISODateString(parseInt(yearRaw, 10), month, parseInt(dayRaw, 10));
 }
