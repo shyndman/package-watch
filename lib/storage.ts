@@ -76,12 +76,20 @@ export async function updateScrapeStatus(
 
 /**
  * Save order state.
+ *
+ * Delivered orders are immutable: once an order is marked delivered, its stored
+ * state is frozen and will not be overwritten by new scrape data.
  */
 export async function saveOrders(site: OrderSite, orders: OrderStatus[]): Promise<void> {
-  const ordersRecord: Record<string, OrderStatus> = {};
+  const stored = await getStoredOrders(site);
+  const ordersRecord = { ...stored.orders };
+
   for (const order of orders) {
-    ordersRecord[order.orderId] = order;
+    if (!ordersRecord[order.orderId]?.isDelivered) {
+      ordersRecord[order.orderId] = order;
+    }
   }
+
   await storage.setItem<StoredOrderState>(getOrderStateKey(site), {
     orders: ordersRecord,
     lastChecked: Date.now(),
