@@ -6,6 +6,17 @@ const NOTIFICATION_SOUND_PATH = '/assets/notification.mp3';
 const PRODUCT_SUMMARY_MAX_LENGTH = 50;
 const PRODUCT_SUMMARY_SUFFIX = '...';
 
+/** Maps notification IDs to order URLs for click handling */
+const notificationUrlMap = new Map<string, string>();
+
+export function getNotificationUrl(notificationId: string): string | undefined {
+  return notificationUrlMap.get(notificationId);
+}
+
+export function clearNotificationUrl(notificationId: string): void {
+  notificationUrlMap.delete(notificationId);
+}
+
 export async function sendNotification(
   order: OrderStatus,
   shouldPlaySound: boolean,
@@ -18,12 +29,14 @@ export async function sendNotification(
   console.log(`[${getSiteLabel(site)}] Sending notification: ${title}`);
 
   try {
-    await browser.notifications.create({
+    const notificationId = await browser.notifications.create({
       type: 'basic',
       iconUrl: browser.runtime.getURL(NOTIFICATION_ICON_PATH),
       title,
       message,
     });
+
+    notificationUrlMap.set(notificationId, order.orderUrl);
 
     if (shouldPlaySound) {
       const audio = new Audio(browser.runtime.getURL(NOTIFICATION_SOUND_PATH));

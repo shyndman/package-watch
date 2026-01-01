@@ -11,6 +11,8 @@ import {
 } from '../lib/background/aliexpress';
 import { handleAmazonOrdersScraped, performAmazonScrape } from '../lib/background/amazon';
 import {
+  clearNotificationUrl,
+  getNotificationUrl,
   sendAuthFailedNotification,
   sendNotification,
   sendParseFailureNotification,
@@ -53,6 +55,7 @@ export default defineBackground(() => {
 
   browser.alarms.onAlarm.addListener(handleAlarm);
   browser.runtime.onMessage.addListener(handleMessage);
+  browser.notifications.onClicked.addListener(handleNotificationClick);
 
   browser.runtime.onInstalled.addListener(() => {
     console.log('[Orders] Extension installed, setting up alarms');
@@ -79,6 +82,14 @@ function handleAlarm(alarm: Browser.alarms.Alarm): void {
 
   if (alarm.name === getAlarmName(ALIEXPRESS_SITE)) {
     void startScrape(ALIEXPRESS_SITE);
+  }
+}
+
+function handleNotificationClick(notificationId: string): void {
+  const url = getNotificationUrl(notificationId);
+  if (url) {
+    void browser.tabs.create({ url, active: true });
+    clearNotificationUrl(notificationId);
   }
 }
 
