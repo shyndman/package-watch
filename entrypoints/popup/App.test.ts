@@ -7,8 +7,27 @@ const makeScrapeStatus = (overrides?: Partial<{ lastAlarmFiredAt: number | null;
   ...overrides,
 });
 
-const makeStoredOrders = (orders: Array<{ isDelivered: boolean }>) => ({
-  orders: Object.fromEntries(orders.map((order, index) => [String(index), order])),
+const makeStoredOrders = (
+  orders: Array<{ isDelivered: boolean; orderDate?: string | null; deliveredAt?: string | null }>
+) => ({
+  orders: Object.fromEntries(
+    orders.map((order, index) => [
+      String(index),
+      {
+        site: 'amazon' as const,
+        orderId: `order-${index}`,
+        status: 'Processing',
+        statusDetail: '',
+        productTitles: ['Test Product'],
+        productUrls: ['https://example.com/product'],
+        orderUrl: 'https://example.com/order',
+        orderDate: order.orderDate ?? '2025-01-01',
+        isDeliveryExpectedToday: false,
+        isDelivered: order.isDelivered,
+        deliveredAt: order.deliveredAt ?? null,
+      },
+    ])
+  ),
   lastChecked: 0,
 });
 
@@ -40,7 +59,7 @@ afterEach(() => {
 });
 
 describe('popup status display', () => {
-  it('shows PENDING when no last alarm fired timestamp is stored', async () => {
+  it('shows -- when no last alarm fired timestamp is stored', async () => {
     vi.doMock('@/lib/storage', () => ({
       getScrapeStatus: vi.fn(async () => makeScrapeStatus()),
       getStoredOrders: vi.fn(async () => makeStoredOrders([])),
@@ -48,14 +67,14 @@ describe('popup status display', () => {
 
     const { app, root } = await mountApp();
 
-    const pending = Array.from(root.querySelectorAll('.meta-value.pending'));
-    expect(pending.length).toBeGreaterThan(0);
-    pending.forEach((node) => expect(node.textContent).toBe('PENDING'));
+    const timeLabels = Array.from(root.querySelectorAll('.site-stat-time'));
+    expect(timeLabels.length).toBeGreaterThan(0);
+    timeLabels.forEach((node) => expect(node.textContent).toBe('--'));
 
     app.unmount();
   });
 
-  it('shows a formatted timestamp with seconds when available', async () => {
+  it('shows an ISO formatted timestamp when available', async () => {
     const timestamp = new Date('2025-12-27T10:05:07Z').getTime();
 
     vi.doMock('@/lib/storage', () => ({
@@ -64,16 +83,9 @@ describe('popup status display', () => {
     }));
 
     const { app, root } = await mountApp();
-    const formatted = new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    }).format(new Date(timestamp));
+    const formatted = new Date(timestamp).toISOString().slice(0, 16);
 
-    const matches = Array.from(root.querySelectorAll('.meta-value')).filter(
+    const matches = Array.from(root.querySelectorAll('.site-stat-time')).filter(
       (node) => node.textContent === formatted
     );
     expect(matches.length).toBeGreaterThan(0);
@@ -87,7 +99,7 @@ describe('popup status display', () => {
       getStoredOrders: vi.fn(async () =>
         makeStoredOrders([
           { isDelivered: false },
-          { isDelivered: true },
+          { isDelivered: true, deliveredAt: '2025-01-02T10:00:00Z' },
           { isDelivered: false },
         ])
       ),
@@ -95,7 +107,7 @@ describe('popup status display', () => {
 
     const { app, root } = await mountApp();
 
-    const counts = Array.from(root.querySelectorAll('.meta-value.count'));
+    const counts = Array.from(root.querySelectorAll('.site-stat-count'));
     expect(counts.length).toBeGreaterThan(0);
     counts.forEach((node) => expect(node.textContent).toBe('2'));
 
