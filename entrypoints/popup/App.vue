@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { onMounted, ref } from 'vue';
-import type { OrderSite } from '@/lib/types';
+import type { OrderSite, OrderStatus } from '@/lib/types';
 import { getScrapeStatus, getStoredOrders } from '@/lib/storage';
 
 type SiteConfig = {
@@ -16,7 +16,7 @@ type SiteViewState = {
   isScrapeInProgress: boolean;
 };
 
-const PENDING_LABEL = 'PENDING';
+const MISSING_TIMESTAMP_LABEL = '--';
 const IN_PROGRESS_LABEL = 'In progress';
 
 const SITE_CONFIG: SiteConfig[] = [
@@ -24,33 +24,52 @@ const SITE_CONFIG: SiteConfig[] = [
   { site: 'aliexpress', label: 'AliExpress' },
 ];
 
-const DATE_TIME_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
-  year: 'numeric',
-  month: 'short',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-};
-
-const dateTimeFormatter = new Intl.DateTimeFormat(undefined, DATE_TIME_FORMAT_OPTIONS);
-
 const sites = ref<SiteViewState[]>(
   SITE_CONFIG.map((config) => ({
     site: config.site,
     label: config.label,
-    lastCheckLabel: PENDING_LABEL,
+    lastCheckLabel: MISSING_TIMESTAMP_LABEL,
     inFlightCount: 0,
     isScrapeInProgress: false,
   }))
 );
 
+const orders = ref<OrderStatus[]>([]);
+
 function formatTimestamp(timestamp: number | null): string {
   if (timestamp === null) {
-    return PENDING_LABEL;
+    return MISSING_TIMESTAMP_LABEL;
+  }
+  return new Date(timestamp).toISOString().slice(0, 16);
+}
+
+function productDisplay(order: OrderStatus): string {
+  if (order.productTitles.length === 1) {
+    return order.productTitles[0];
+  }
+  return `${order.productTitles[0]} +${order.productTitles.length - 1} more`;
+}
+
+function compareOrders(a: OrderStatus, b: OrderStatus): number {
+  // Non-delivered first
+  if (a.isDelivered !== b.isDelivered) {
+    return a.isDelivered ? 1 : -1;
   }
 
-  return dateTimeFormatter.format(new Date(timestamp));
+  // Within each group, sort by date descending (nulls last)
+  if (a.isDelivered) {
+    // Delivered: sort by deliveredAt
+    if (a.deliveredAt === null && b.deliveredAt === null) return 0;
+    if (a.deliveredAt === null) return 1;
+    if (b.deliveredAt === null) return -1;
+    return b.deliveredAt.localeCompare(a.deliveredAt);
+  } else {
+    // Non-delivered: sort by orderDate
+    if (a.orderDate === null && b.orderDate === null) return 0;
+    if (a.orderDate === null) return 1;
+    if (b.orderDate === null) return -1;
+    return b.orderDate.localeCompare(a.orderDate);
+  }
 }
 
 async function buildSiteViewState(config: SiteConfig): Promise<SiteViewState> {
@@ -72,54 +91,61 @@ async function buildSiteViewState(config: SiteConfig): Promise<SiteViewState> {
   };
 }
 
-async function loadSiteStatus(): Promise<void> {
-  const next = await Promise.all(SITE_CONFIG.map(buildSiteViewState));
-  sites.value = next;
+async function loadData(): Promise<void> {
+  const siteStates = await Promise.all(SITE_CONFIG.map(buildSiteViewState));
+  sites.value = siteStates;
+
+  // Load orders from all sites
+  const allOrders: OrderStatus[] = [];
+  for (const config of SITE_CONFIG) {
+    const storedOrders = await getStoredOrders(config.site);
+    allOrders.push(...Object.values(storedOrders.orders));
+  }
+  orders.value = allOrders.sort(compareOrders);
 }
 
 onMounted(() => {
-  void loadSiteStatus();
+  void loadData();
 });
 </script>
 
 <template>
   <div class="popup">
     <header class="header">
-      <div>
-        <p class="eyebrow">Order monitoring</p>
-        <h1>Check Status</h1>
-      </div>
-      <span class="subtle">Amazon + AliExpress</span>
-    </header>
-
-    <section class="site-grid">
-      <article v-for="site in sites" :key="site.site" class="site-card">
-        <div class="site-header">
-          <div class="site-name">{{ site.label }}</div>
+      <h1>Order Status</h1>
+      <div class="site-stats">
+        <span v-for="site in sites" :key="site.site" class="site-stat">
+          <span class="site-stat-label">{{ site.label }}:</span>
+          <span class="site-stat-count">{{ site.inFlightCount }}</span>
+          <span class="site-stat-separator">·</span>
+          <span class="site-stat-time">{{ site.lastCheckLabel }}</span>
           <span v-if="site.isScrapeInProgress" class="status-pill">
             {{ IN_PROGRESS_LABEL }}
           </span>
-        </div>
+        </span>
+      </div>
+    </header>
 
-        <div class="meta-row">
-          <span class="meta-label">Last check</span>
-          <span
-            class="meta-value"
-            :class="{ pending: site.lastCheckLabel === PENDING_LABEL }"
-          >
-            {{ site.lastCheckLabel }}
-          </span>
+    <section class="order-list">
+      <article
+        v-for="order in orders"
+        :key="order.orderId"
+        class="order-card"
+        :class="{ delivered: order.isDelivered }"
+      >
+        <div class="order-header">
+          <span class="site-badge">{{ order.site }}</span>
+          <span class="product-title">{{ productDisplay(order) }}</span>
+          <a :href="order.orderUrl" target="_blank" class="order-link">↗</a>
         </div>
-
-        <div class="meta-row">
-          <span class="meta-label">In-flight orders</span>
-          <span class="meta-value count">{{ site.inFlightCount }}</span>
+        <div class="order-status">
+          {{ order.status }}{{ order.statusDetail ? ' · ' + order.statusDetail : '' }}
         </div>
       </article>
-    </section>
 
-    <footer class="footer">
-      <span>Scrapes run automatically in the background.</span>
-    </footer>
+      <div v-if="orders.length === 0" class="empty-state">
+        No orders being tracked
+      </div>
+    </section>
   </div>
 </template>
