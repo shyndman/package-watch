@@ -77,11 +77,17 @@ export async function updateScrapeStatus(
   return next;
 }
 
+function isOrderCancelled(order: OrderStatus): boolean {
+  return order.status.toLowerCase().includes('cancelled');
+}
+
 /**
  * Save order state.
  *
  * Delivered orders are immutable: once an order is marked delivered, its stored
  * state is frozen and will not be overwritten by new scrape data.
+ *
+ * Cancelled orders are never stored.
  *
  * Expired orders (delivered 7+ days ago, or delivered with missing deliveredAt)
  * are filtered out during writes.
@@ -93,6 +99,12 @@ export async function saveOrders(site: OrderSite, orders: OrderStatus[]): Promis
 
   // Merge incoming orders, stamping deliveredAt on first delivery detection
   for (const order of orders) {
+    // Never store cancelled orders
+    if (isOrderCancelled(order)) {
+      delete ordersRecord[order.orderId];
+      continue;
+    }
+
     const existing = ordersRecord[order.orderId];
     if (existing?.isDelivered) {
       // Already delivered, preserve existing state (immutable)
