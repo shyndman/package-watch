@@ -166,8 +166,7 @@ function getAliExpressDeps() {
     clearScrapeTimeout,
     processOrdersForSite,
     sendAuthFailedNotification,
-    openOrderDetailsTab,
-    openTrackingTab,
+    navigateScrapeTab,
   };
 }
 
@@ -191,49 +190,12 @@ async function openOrderListTab(site: OrderSite, url: string): Promise<number | 
   }
 }
 
-async function openTrackingTab(url: string): Promise<number | null> {
-  if (!scrapeInProgressBySite[ALIEXPRESS_SITE]) {
-    return null;
-  }
-
+async function navigateScrapeTab(tabId: number, url: string): Promise<void> {
   try {
-    const tab = await browser.tabs.create({
-      url,
-      active: false,
-    });
-
-    if (!tab.id) {
-      return null;
-    }
-
-    trackScrapeTab(ALIEXPRESS_SITE, tab.id);
-    return tab.id;
+    await browser.tabs.update(tabId, { url });
   } catch (e) {
-    console.error(`[${getSiteLabel(ALIEXPRESS_SITE)}] Error creating tracking tab:`, e);
-    return null;
-  }
-}
-
-async function openOrderDetailsTab(url: string): Promise<number | null> {
-  if (!scrapeInProgressBySite[ALIEXPRESS_SITE]) {
-    return null;
-  }
-
-  try {
-    const tab = await browser.tabs.create({
-      url,
-      active: false,
-    });
-
-    if (!tab.id) {
-      return null;
-    }
-
-    trackScrapeTab(ALIEXPRESS_SITE, tab.id);
-    return tab.id;
-  } catch (e) {
-    console.error(`[${getSiteLabel(ALIEXPRESS_SITE)}] Error creating order details tab:`, e);
-    return null;
+    console.error(`[${getSiteLabel(ALIEXPRESS_SITE)}] Error navigating scrape tab:`, e);
+    throw e;
   }
 }
 

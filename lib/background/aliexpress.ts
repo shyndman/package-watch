@@ -29,31 +29,25 @@ const MONTH_MAP: Record<string, number> = {
   dec: 11,
 };
 
-type PendingTrackingRequest = {
-  resolve: (result: AliExpressTrackingResult | null) => void;
-  timeoutId: ReturnType<typeof setTimeout>;
-  expectedOrderId: string;
-};
-
-type AliExpressDependencies = {
+export type AliExpressDependencies = {
   openOrderListTab: (site: OrderSite, url: string) => Promise<number | null>;
   handleScrapeFailure: (site: OrderSite) => void;
   closeScrapeTab: (site: OrderSite, tabId: number | undefined) => Promise<void>;
   clearScrapeTimeout: (site: OrderSite) => void;
   processOrdersForSite: (site: OrderSite, orders: OrderStatus[]) => Promise<void>;
   sendAuthFailedNotification: () => Promise<void>;
-  openOrderDetailsTab: (url: string) => Promise<number | null>;
-  openTrackingTab: (url: string) => Promise<number | null>;
+  navigateScrapeTab: (tabId: number, url: string) => Promise<void>;
 };
 
-type PendingOrderDetailsRequest = {
-  resolve: (result: AliExpressOrderDetailsResult | null) => void;
+type PendingRequest<T> = {
+  resolve: (result: T | null) => void;
   timeoutId: ReturnType<typeof setTimeout>;
   expectedOrderId: string;
 };
 
-const pendingAliExpressOrderDetails = new Map<number, PendingOrderDetailsRequest>();
-const pendingAliExpressTracking = new Map<number, PendingTrackingRequest>();
+/** Single pending request for the current scrape session (one at a time, sequential navigation) */
+let pendingRequest: PendingRequest<AliExpressOrderDetailsResult | AliExpressTrackingResult> | null =
+  null;
 
 export async function performAliExpressScrape(deps: AliExpressDependencies): Promise<void> {
   console.log(`[${getSiteLabel(ALIEXPRESS_SITE)}] Opening orders page in background tab`);
@@ -79,114 +73,105 @@ export async function handleAliExpressOrdersDiscovered(
   deps: AliExpressDependencies
 ): Promise<void> {
   deps.clearScrapeTimeout(ALIEXPRESS_SITE);
-  await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
 
-  const orderDetailsResults = await scrapeAliExpressOrderDetailsForOrders(orders, deps);
-  const trackingResults = await scrapeAliExpressTrackingForOrders(orders, deps);
-  const orderStatuses = buildAliExpressOrderStatuses(orders, orderDetailsResults, trackingResults);
-  await deps.processOrdersForSite(ALIEXPRESS_SITE, orderStatuses);
+  if (!tabId) {
+    deps.handleScrapeFailure(ALIEXPRESS_SITE);
+    return;
+  }
+
+  try {
+    const orderDetailsResults = await scrapeAliExpressOrderDetailsForOrders(orders, tabId, deps);
+    const trackingResults = await scrapeAliExpressTrackingForOrders(orders, tabId, deps);
+    const orderStatuses = buildAliExpressOrderStatuses(orders, orderDetailsResults, trackingResults);
+    await deps.processOrdersForSite(ALIEXPRESS_SITE, orderStatuses);
+  } finally {
+    await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+  }
 }
 
 export function handleAliExpressOrderDetailsMessage(
   details: AliExpressOrderDetailsResult,
-  tabId: number | undefined,
-  deps: AliExpressDependencies
+  _tabId: number | undefined,
+  _deps: AliExpressDependencies
 ): void {
-  if (!tabId) {
+  if (!pendingRequest) {
+    console.warn('[AliExpress Orders] Order details result with no pending request');
     return;
   }
 
-  const pending = pendingAliExpressOrderDetails.get(tabId);
-  if (!pending) {
-    console.warn('[AliExpress Orders] Order details result for unknown tab', tabId);
-    return;
-  }
+  clearTimeout(pendingRequest.timeoutId);
 
-  clearTimeout(pending.timeoutId);
-  pendingAliExpressOrderDetails.delete(tabId);
-  void deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
-
-  if (pending.expectedOrderId !== details.orderId) {
+  if (pendingRequest.expectedOrderId !== details.orderId) {
     console.warn('[AliExpress Orders] Order details order ID mismatch', {
-      expected: pending.expectedOrderId,
+      expected: pendingRequest.expectedOrderId,
       received: details.orderId,
     });
   }
 
-  pending.resolve(details);
+  const { resolve } = pendingRequest;
+  pendingRequest = null;
+  resolve(details);
 }
 
 export function handleAliExpressTrackingMessage(
   tracking: AliExpressTrackingResult,
-  tabId: number | undefined,
-  deps: AliExpressDependencies
+  _tabId: number | undefined,
+  _deps: AliExpressDependencies
 ): void {
-  if (!tabId) {
+  if (!pendingRequest) {
+    console.warn('[AliExpress Orders] Tracking result with no pending request');
     return;
   }
 
-  const pending = pendingAliExpressTracking.get(tabId);
-  if (!pending) {
-    console.warn('[AliExpress Orders] Tracking result for unknown tab', tabId);
-    return;
-  }
+  clearTimeout(pendingRequest.timeoutId);
 
-  clearTimeout(pending.timeoutId);
-  pendingAliExpressTracking.delete(tabId);
-  void deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
-
-  if (pending.expectedOrderId !== tracking.orderId) {
+  if (pendingRequest.expectedOrderId !== tracking.orderId) {
     console.warn('[AliExpress Orders] Tracking order ID mismatch', {
-      expected: pending.expectedOrderId,
+      expected: pendingRequest.expectedOrderId,
       received: tracking.orderId,
     });
   }
 
-  pending.resolve(tracking);
+  const { resolve } = pendingRequest;
+  pendingRequest = null;
+  resolve(tracking);
 }
 
 export async function handleAliExpressOrderDetailsParseFailure(
   tabId: number | undefined,
   deps: AliExpressDependencies
 ): Promise<void> {
-  if (!tabId) {
-    return;
-  }
-
-  const pending = pendingAliExpressOrderDetails.get(tabId);
-  if (!pending) {
+  if (!pendingRequest) {
     await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
     return;
   }
 
-  clearTimeout(pending.timeoutId);
-  pendingAliExpressOrderDetails.delete(tabId);
+  clearTimeout(pendingRequest.timeoutId);
+  const { resolve } = pendingRequest;
+  pendingRequest = null;
   await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
-  pending.resolve(null);
+  resolve(null);
 }
 
 export async function handleAliExpressTrackingParseFailure(
   tabId: number | undefined,
   deps: AliExpressDependencies
 ): Promise<void> {
-  if (!tabId) {
-    return;
-  }
-
-  const pending = pendingAliExpressTracking.get(tabId);
-  if (!pending) {
+  if (!pendingRequest) {
     await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
     return;
   }
 
-  clearTimeout(pending.timeoutId);
-  pendingAliExpressTracking.delete(tabId);
+  clearTimeout(pendingRequest.timeoutId);
+  const { resolve } = pendingRequest;
+  pendingRequest = null;
   await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
-  pending.resolve(null);
+  resolve(null);
 }
 
 async function scrapeAliExpressOrderDetailsForOrders(
   orders: AliExpressDiscoveredOrder[],
+  tabId: number,
   deps: AliExpressDependencies
 ): Promise<AliExpressOrderDetailsResult[]> {
   const results: AliExpressOrderDetailsResult[] = [];
@@ -197,7 +182,7 @@ async function scrapeAliExpressOrderDetailsForOrders(
       continue;
     }
 
-    const details = await scrapeAliExpressOrderDetails(detailsUrl, order.orderId, deps);
+    const details = await scrapeAliExpressOrderDetails(detailsUrl, order.orderId, tabId, deps);
     if (details) {
       results.push(details);
     }
@@ -209,38 +194,16 @@ async function scrapeAliExpressOrderDetailsForOrders(
 async function scrapeAliExpressOrderDetails(
   detailsUrl: string,
   orderId: string,
-  deps: AliExpressDependencies
-): Promise<AliExpressOrderDetailsResult | null> {
-  const tabId = await deps.openOrderDetailsTab(detailsUrl);
-  if (!tabId) {
-    return null;
-  }
-
-  return waitForAliExpressOrderDetails(tabId, orderId, deps);
-}
-
-function waitForAliExpressOrderDetails(
   tabId: number,
-  orderId: string,
   deps: AliExpressDependencies
 ): Promise<AliExpressOrderDetailsResult | null> {
-  return new Promise((resolve) => {
-    const timeoutId = setTimeout(() => {
-      pendingAliExpressOrderDetails.delete(tabId);
-      void deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
-      resolve(null);
-    }, SCRAPE_TIMEOUT_MS);
-
-    pendingAliExpressOrderDetails.set(tabId, {
-      resolve,
-      timeoutId,
-      expectedOrderId: orderId,
-    });
-  });
+  await deps.navigateScrapeTab(tabId, detailsUrl);
+  return waitForScrapeResult<AliExpressOrderDetailsResult>(orderId, tabId, deps);
 }
 
 async function scrapeAliExpressTrackingForOrders(
   orders: AliExpressDiscoveredOrder[],
+  tabId: number,
   deps: AliExpressDependencies
 ): Promise<AliExpressTrackingResult[]> {
   const results: AliExpressTrackingResult[] = [];
@@ -251,10 +214,11 @@ async function scrapeAliExpressTrackingForOrders(
     }
 
     const trackingUrl = order.trackingUrl ?? buildAliExpressTrackingUrl(order.orderId);
-    const tracking = trackingUrl
-      ? await scrapeAliExpressTracking(trackingUrl, order.orderId, deps)
-      : null;
+    if (!trackingUrl) {
+      continue;
+    }
 
+    const tracking = await scrapeAliExpressTracking(trackingUrl, order.orderId, tabId, deps);
     if (tracking) {
       results.push(tracking);
     }
@@ -266,33 +230,30 @@ async function scrapeAliExpressTrackingForOrders(
 async function scrapeAliExpressTracking(
   trackingUrl: string,
   orderId: string,
+  tabId: number,
   deps: AliExpressDependencies
 ): Promise<AliExpressTrackingResult | null> {
-  const tabId = await deps.openTrackingTab(trackingUrl);
-  if (!tabId) {
-    return null;
-  }
-
-  return waitForAliExpressTracking(tabId, orderId, deps);
+  await deps.navigateScrapeTab(tabId, trackingUrl);
+  return waitForScrapeResult<AliExpressTrackingResult>(orderId, tabId, deps);
 }
 
-function waitForAliExpressTracking(
-  tabId: number,
+function waitForScrapeResult<T>(
   orderId: string,
+  tabId: number,
   deps: AliExpressDependencies
-): Promise<AliExpressTrackingResult | null> {
+): Promise<T | null> {
   return new Promise((resolve) => {
     const timeoutId = setTimeout(() => {
-      pendingAliExpressTracking.delete(tabId);
+      pendingRequest = null;
       void deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
       resolve(null);
     }, SCRAPE_TIMEOUT_MS);
 
-    pendingAliExpressTracking.set(tabId, {
-      resolve,
+    pendingRequest = {
+      resolve: resolve as (result: AliExpressOrderDetailsResult | AliExpressTrackingResult | null) => void,
       timeoutId,
       expectedOrderId: orderId,
-    });
+    };
   });
 }
 

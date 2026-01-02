@@ -35,6 +35,7 @@ Use **pnpm**, not npm or yarn.
 pnpm install          # install dependencies
 pnpm dev:firefox      # dev mode (auto-reloads)
 pnpm build:firefox    # production build
+pnpm zip:firefox      # build and package as .zip (used for testing)
 pnpm xpi:firefox      # build and package as .xpi
 pnpm compile          # type-check with vue-tsc
 ```
