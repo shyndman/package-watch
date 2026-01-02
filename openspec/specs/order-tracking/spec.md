@@ -42,6 +42,7 @@ Explicitly required data includes, at minimum:
 - **WHEN** multiple parse failures occur during a single scrape run for a site
 - **THEN** the system SHALL send only one parse failure notification for that run
 - **AND** it SHALL log each failure
+
 ### Requirement: Multi-Site Order Tracking
 
 The system SHALL support tracking orders from multiple e-commerce sites simultaneously, with each site having independent polling schedules, storage, and notification behavior.
@@ -177,3 +178,24 @@ The system SHALL show an in-progress indicator when a site scrape is running.
 - **GIVEN** a site scrape is in progress
 - **WHEN** the user opens the popup
 - **THEN** the system SHALL show a small status label indicating the scrape is in progress
+
+### Requirement: AliExpress Single-Tab Scrape
+
+The system SHALL use a single browser tab for the entire AliExpress scrape sequence to minimize visual distraction.
+
+#### Scenario: Tab lifecycle during successful scrape
+- **WHEN** an AliExpress scrape begins
+- **THEN** the system SHALL create one background tab
+- **AND** navigate that tab sequentially through: order list → order details (per order) → tracking (per active order)
+- **AND** close the tab only after all pages have been scraped
+
+#### Scenario: Tab lifecycle on parse failure
+- **WHEN** a parse failure occurs during any phase of the AliExpress scrape
+- **THEN** the system SHALL close the scrape tab
+- **AND** abort the remaining scrape sequence
+
+#### Scenario: Tab lifecycle on timeout
+- **WHEN** a page load times out during any phase of the AliExpress scrape
+- **THEN** the system SHALL close the scrape tab
+- **AND** abort the remaining scrape sequence
+
