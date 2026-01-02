@@ -173,6 +173,11 @@ export async function detectChanges(
   const changed: OrderStatus[] = [];
 
   for (const order of newOrders) {
+    // Never report cancelled orders as changed
+    if (isOrderCancelled(order)) {
+      continue;
+    }
+
     const prev = stored.orders[order.orderId];
     if (!prev) {
       // New order we haven't seen before
