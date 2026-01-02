@@ -164,7 +164,8 @@ export async function detectChanges(
     const prev = stored.orders[order.orderId];
     if (!prev) {
       // New order we haven't seen before
-      if (!isFirstRun) {
+      // Skip delivered orders without history - likely expired entries reappearing
+      if (!isFirstRun && !order.isDelivered) {
         changed.push(order);
       }
     } else if (treatDeliveredAsTerminal && prev.isDelivered) {

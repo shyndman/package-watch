@@ -226,3 +226,89 @@ describe('saveOrders', () => {
     });
   });
 });
+
+describe('detectChanges', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not report expired delivered orders reappearing as changed', async () => {
+    const storageStub = makeStorageStub();
+    vi.doMock('@wxt-dev/storage', () => storageStub);
+
+    const { detectChanges } = await import('./storage');
+
+    // Storage has an existing non-delivered order (so this isn't first run)
+    storageStub.storage._store.set('local:amazonOrderState', {
+      orders: {
+        'order-existing': makeOrder({ orderId: 'order-existing', isDelivered: false }),
+      },
+      lastChecked: Date.now(),
+    });
+
+    // Scrape returns a delivered order we haven't seen (simulating an expired order reappearing)
+    const scrapedOrders = [
+      makeOrder({ orderId: 'order-expired', isDelivered: true }),
+      makeOrder({ orderId: 'order-existing', isDelivered: false }),
+    ];
+
+    const { changed, isFirstRun } = await detectChanges(scrapedOrders, 'amazon');
+
+    expect(isFirstRun).toBe(false);
+    expect(changed).toHaveLength(0);
+  });
+
+  it('reports new non-delivered orders as changed', async () => {
+    const storageStub = makeStorageStub();
+    vi.doMock('@wxt-dev/storage', () => storageStub);
+
+    const { detectChanges } = await import('./storage');
+
+    // Storage has an existing order (so this isn't first run)
+    storageStub.storage._store.set('local:amazonOrderState', {
+      orders: {
+        'order-existing': makeOrder({ orderId: 'order-existing', isDelivered: false }),
+      },
+      lastChecked: Date.now(),
+    });
+
+    // Scrape returns a new non-delivered order
+    const scrapedOrders = [
+      makeOrder({ orderId: 'order-new', isDelivered: false, status: 'Shipped' }),
+      makeOrder({ orderId: 'order-existing', isDelivered: false }),
+    ];
+
+    const { changed, isFirstRun } = await detectChanges(scrapedOrders, 'amazon');
+
+    expect(isFirstRun).toBe(false);
+    expect(changed).toHaveLength(1);
+    expect(changed[0].orderId).toBe('order-new');
+  });
+
+  it('does not report any orders as changed on first run', async () => {
+    const storageStub = makeStorageStub();
+    vi.doMock('@wxt-dev/storage', () => storageStub);
+
+    const { detectChanges } = await import('./storage');
+
+    // Empty storage (first run)
+    storageStub.storage._store.set('local:amazonOrderState', {
+      orders: {},
+      lastChecked: 0,
+    });
+
+    const scrapedOrders = [
+      makeOrder({ orderId: 'order-1', isDelivered: false }),
+      makeOrder({ orderId: 'order-2', isDelivered: true }),
+    ];
+
+    const { changed, isFirstRun } = await detectChanges(scrapedOrders, 'amazon');
+
+    expect(isFirstRun).toBe(true);
+    expect(changed).toHaveLength(0);
+  });
+});
