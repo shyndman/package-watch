@@ -1,32 +1,30 @@
+import { defineScrapingScript } from '../lib/define-scraping-script';
+import { sendMessage } from '../lib/messaging';
 import { ParseFailureError, isParseFailureError } from '../lib/parse-failure';
-import type { AliExpressTrackingResult, MessageType } from '../lib/types';
+import type { AliExpressTrackingResult } from '../lib/types';
 
-export default defineContentScript({
+export default defineScrapingScript({
   matches: ['*://www.aliexpress.com/p/tracking/index.html*'],
 
-  async main() {
-    console.log('[AliExpress Tracking] Content script loaded');
+  async scrape() {
+    console.log('[AliExpress Tracking] Scraping tracking');
 
     try {
       const tracking = await waitForTrackingAndParse();
 
-      browser.runtime.sendMessage({
-        type: 'ALIEXPRESS_TRACKING_SCRAPED',
-        tracking,
-      } satisfies MessageType);
+      await sendMessage('aliexpress:tracking', { tracking });
     } catch (error) {
       if (!isParseFailureError(error)) {
         throw error;
       }
 
       console.error('[AliExpress Tracking] Parse failure:', error);
-      browser.runtime.sendMessage({
-        type: 'PARSE_FAILURE',
+      await sendMessage('scrape:parseFailure', {
         site: 'aliexpress',
         phase: 'aliexpress-tracking',
         reason: error.reason ?? error.message,
         url: error.url ?? location.href,
-      } satisfies MessageType);
+      });
     }
   },
 });

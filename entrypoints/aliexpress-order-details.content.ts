@@ -1,32 +1,30 @@
+import { defineScrapingScript } from '../lib/define-scraping-script';
+import { sendMessage } from '../lib/messaging';
 import { ParseFailureError, isParseFailureError } from '../lib/parse-failure';
-import type { AliExpressOrderDetailsResult, MessageType } from '../lib/types';
+import type { AliExpressOrderDetailsResult } from '../lib/types';
 
-export default defineContentScript({
+export default defineScrapingScript({
   matches: ['*://www.aliexpress.com/p/order/detail.html*'],
 
-  async main() {
-    console.log('[AliExpress Order Details] Content script loaded');
+  async scrape() {
+    console.log('[AliExpress Order Details] Scraping details');
 
     try {
       const details = await waitForOrderDetailsAndParse();
 
-      browser.runtime.sendMessage({
-        type: 'ALIEXPRESS_ORDER_DETAILS_SCRAPED',
-        details,
-      } satisfies MessageType);
+      await sendMessage('aliexpress:orderDetails', { details });
     } catch (error) {
       if (!isParseFailureError(error)) {
         throw error;
       }
 
       console.error('[AliExpress Order Details] Parse failure:', error);
-      browser.runtime.sendMessage({
-        type: 'PARSE_FAILURE',
+      await sendMessage('scrape:parseFailure', {
         site: 'aliexpress',
         phase: 'aliexpress-order-details',
         reason: error.reason ?? error.message,
         url: error.url ?? location.href,
-      } satisfies MessageType);
+      });
     }
   },
 });

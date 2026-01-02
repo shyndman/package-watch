@@ -115,7 +115,7 @@ describe('AliExpress single-tab scrape', () => {
 
       // Tab should be closed exactly once at the end
       expect(deps.closeScrapeTab).toHaveBeenCalledTimes(1);
-      expect(deps.closeScrapeTab).toHaveBeenCalledWith('aliexpress', tabId);
+      expect(deps.closeScrapeTab).toHaveBeenCalledWith(tabId);
 
       // Orders should be processed
       expect(deps.processOrdersForSite).toHaveBeenCalledTimes(1);
@@ -261,7 +261,7 @@ describe('AliExpress single-tab scrape', () => {
       await scrapePromise;
 
       // Tab should be closed by parse failure handler
-      expect(deps.closeScrapeTab).toHaveBeenCalledWith('aliexpress', tabId);
+      expect(deps.closeScrapeTab).toHaveBeenCalledWith(tabId);
     });
 
     it('closes tab on tracking parse failure', async () => {
@@ -294,7 +294,7 @@ describe('AliExpress single-tab scrape', () => {
       await scrapePromise;
 
       // Tab should be closed by parse failure handler
-      expect(deps.closeScrapeTab).toHaveBeenCalledWith('aliexpress', tabId);
+      expect(deps.closeScrapeTab).toHaveBeenCalledWith(tabId);
     });
   });
 });

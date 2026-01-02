@@ -1,36 +1,33 @@
 import { toISODateString } from '../lib/date';
+import { defineScrapingScript } from '../lib/define-scraping-script';
+import { sendMessage } from '../lib/messaging';
 import { ParseFailureError, isParseFailureError } from '../lib/parse-failure';
-import type { OrderSite, OrderStatus, MessageType } from '../lib/types';
+import type { OrderSite, OrderStatus } from '../lib/types';
 
-export default defineContentScript({
+export default defineScrapingScript({
   matches: ['*://www.amazon.ca/gp/css/order-history*', '*://www.amazon.ca/your-orders/*'],
 
-  async main() {
-    console.log('[Amazon Orders] Content script loaded');
+  async scrape() {
+    console.log('[Amazon Orders] Scraping orders');
 
     try {
       // Wait for order cards to appear in the DOM
       const orders = await waitForOrdersAndParse();
       console.log(`[Amazon Orders] Found ${orders.length} orders`);
 
-      browser.runtime.sendMessage({
-        type: 'ORDERS_SCRAPED',
-        site: SITE,
-        orders,
-      } satisfies MessageType);
+      await sendMessage('orders:scraped', { site: SITE, orders });
     } catch (error) {
       if (!isParseFailureError(error)) {
         throw error;
       }
 
       console.error('[Amazon Orders] Parse failure:', error);
-      browser.runtime.sendMessage({
-        type: 'PARSE_FAILURE',
+      await sendMessage('scrape:parseFailure', {
         site: SITE,
         phase: 'amazon-orders',
         reason: error.reason ?? error.message,
         url: error.url ?? location.href,
-      } satisfies MessageType);
+      });
     }
   },
 });

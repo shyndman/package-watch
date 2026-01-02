@@ -32,7 +32,7 @@ const MONTH_MAP: Record<string, number> = {
 export type AliExpressDependencies = {
   openOrderListTab: (site: OrderSite, url: string) => Promise<number | null>;
   handleScrapeFailure: (site: OrderSite) => void;
-  closeScrapeTab: (site: OrderSite, tabId: number | undefined) => Promise<void>;
+  closeScrapeTab: (tabId: number | undefined) => Promise<void>;
   clearScrapeTimeout: (site: OrderSite) => void;
   processOrdersForSite: (site: OrderSite, orders: OrderStatus[]) => Promise<void>;
   sendAuthFailedNotification: () => Promise<void>;
@@ -62,7 +62,7 @@ export async function handleAliExpressAuthFailed(
   deps: AliExpressDependencies
 ): Promise<void> {
   deps.clearScrapeTimeout(ALIEXPRESS_SITE);
-  await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+  await deps.closeScrapeTab(tabId);
   await deps.sendAuthFailedNotification();
   deps.handleScrapeFailure(ALIEXPRESS_SITE);
 }
@@ -85,7 +85,7 @@ export async function handleAliExpressOrdersDiscovered(
     const orderStatuses = buildAliExpressOrderStatuses(orders, orderDetailsResults, trackingResults);
     await deps.processOrdersForSite(ALIEXPRESS_SITE, orderStatuses);
   } finally {
-    await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+    await deps.closeScrapeTab(tabId);
   }
 }
 
@@ -142,14 +142,14 @@ export async function handleAliExpressOrderDetailsParseFailure(
   deps: AliExpressDependencies
 ): Promise<void> {
   if (!pendingRequest) {
-    await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+    await deps.closeScrapeTab(tabId);
     return;
   }
 
   clearTimeout(pendingRequest.timeoutId);
   const { resolve } = pendingRequest;
   pendingRequest = null;
-  await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+  await deps.closeScrapeTab(tabId);
   resolve(null);
 }
 
@@ -158,14 +158,14 @@ export async function handleAliExpressTrackingParseFailure(
   deps: AliExpressDependencies
 ): Promise<void> {
   if (!pendingRequest) {
-    await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+    await deps.closeScrapeTab(tabId);
     return;
   }
 
   clearTimeout(pendingRequest.timeoutId);
   const { resolve } = pendingRequest;
   pendingRequest = null;
-  await deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+  await deps.closeScrapeTab(tabId);
   resolve(null);
 }
 
@@ -245,7 +245,7 @@ function waitForScrapeResult<T>(
   return new Promise((resolve) => {
     const timeoutId = setTimeout(() => {
       pendingRequest = null;
-      void deps.closeScrapeTab(ALIEXPRESS_SITE, tabId);
+      void deps.closeScrapeTab(tabId);
       resolve(null);
     }, SCRAPE_TIMEOUT_MS);
 

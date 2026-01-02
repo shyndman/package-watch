@@ -6,7 +6,7 @@ const AMAZON_ORDERS_URL = 'https://www.amazon.ca/gp/css/order-history';
 type AmazonDependencies = {
   openOrderListTab: (site: OrderSite, url: string) => Promise<number | null>;
   handleScrapeFailure: (site: OrderSite) => void;
-  closeScrapeTab: (site: OrderSite, tabId: number | undefined) => Promise<void>;
+  closeScrapeTab: (tabId: number | undefined) => Promise<void>;
   clearScrapeTimeout: (site: OrderSite) => void;
   processOrdersForSite: (site: OrderSite, orders: OrderStatus[]) => Promise<void>;
 };
@@ -25,6 +25,6 @@ export async function handleAmazonOrdersScraped(
   deps: AmazonDependencies
 ): Promise<void> {
   deps.clearScrapeTimeout(AMAZON_SITE);
-  await deps.closeScrapeTab(AMAZON_SITE, tabId);
+  await deps.closeScrapeTab(tabId);
   await deps.processOrdersForSite(AMAZON_SITE, orders);
 }

@@ -1,42 +1,38 @@
 import { toISODateString } from '../lib/date';
+import { defineScrapingScript } from '../lib/define-scraping-script';
+import { sendMessage } from '../lib/messaging';
 import { ParseFailureError, isParseFailureError } from '../lib/parse-failure';
-import type { AliExpressDiscoveredOrder, MessageType } from '../lib/types';
+import type { AliExpressDiscoveredOrder } from '../lib/types';
 
-export default defineContentScript({
+export default defineScrapingScript({
   matches: ['*://www.aliexpress.com/p/order/index.html*'],
 
-  async main() {
-    console.log('[AliExpress Orders] Content script loaded');
+  async scrape() {
+    console.log('[AliExpress Orders] Scraping orders');
 
     try {
       const { orders, isAuthFailure } = await waitForOrdersAndParse();
 
       if (isAuthFailure) {
         console.warn('[AliExpress Orders] Auth failure detected');
-        browser.runtime.sendMessage({
-          type: 'ALIEXPRESS_AUTH_FAILED',
-        } satisfies MessageType);
+        await sendMessage('aliexpress:authFailed', undefined);
         return;
       }
 
       console.log(`[AliExpress Orders] Found ${orders.length} orders`);
-      browser.runtime.sendMessage({
-        type: 'ALIEXPRESS_ORDERS_DISCOVERED',
-        orders,
-      } satisfies MessageType);
+      await sendMessage('aliexpress:ordersDiscovered', { orders });
     } catch (error) {
       if (!isParseFailureError(error)) {
         throw error;
       }
 
       console.error('[AliExpress Orders] Parse failure:', error);
-      browser.runtime.sendMessage({
-        type: 'PARSE_FAILURE',
+      await sendMessage('scrape:parseFailure', {
         site: 'aliexpress',
         phase: 'aliexpress-orders',
         reason: error.reason ?? error.message,
         url: error.url ?? location.href,
-      } satisfies MessageType);
+      });
     }
   },
 });

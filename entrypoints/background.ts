@@ -1,4 +1,4 @@
-import type { MessageType, OrderSite, OrderStatus } from '../lib/types';
+import type { OrderSite, OrderStatus, ParseFailurePhase } from '../lib/types';
 import { detectChanges, saveOrders, updateScrapeStatus } from '../lib/storage';
 import {
   handleAliExpressAuthFailed,
@@ -25,11 +25,10 @@ import {
   getSiteLabel,
   scheduleNextCheck,
 } from '../lib/background/scheduler';
+import { onMessage } from '../lib/messaging';
 
-const scrapeTabIdsBySite = new Map<OrderSite, Set<number>>([
-  [AMAZON_SITE, new Set()],
-  [ALIEXPRESS_SITE, new Set()],
-]);
+/** Tracks all tabs opened by this extension for scraping. */
+const scrapeTabIds = new Set<number>();
 
 const scrapeInProgressBySite: Record<OrderSite, boolean> = {
   amazon: false,
@@ -53,8 +52,49 @@ const ALARM_LOG_SUFFIX = ' order check started';
 export default defineBackground(() => {
   console.log('[Orders] Background script loaded');
 
+  // Register all message handlers
+  onMessage('scrape:checkActivation', ({ sender }) => {
+    const tabId = sender.tab?.id;
+    return tabId !== undefined && scrapeTabIds.has(tabId);
+  });
+
+  onMessage('orders:scraped', ({ data, sender }) => {
+    if (data.site === AMAZON_SITE) {
+      void handleAmazonOrdersScraped(data.orders, sender.tab?.id, getAmazonDeps());
+    }
+  });
+
+  onMessage('aliexpress:ordersDiscovered', ({ data, sender }) => {
+    void handleAliExpressOrdersDiscovered(data.orders, sender.tab?.id, getAliExpressDeps());
+  });
+
+  onMessage('aliexpress:orderDetails', ({ data, sender }) => {
+    handleAliExpressOrderDetailsMessage(data.details, sender.tab?.id, getAliExpressDeps());
+  });
+
+  onMessage('aliexpress:tracking', ({ data, sender }) => {
+    handleAliExpressTrackingMessage(data.tracking, sender.tab?.id, getAliExpressDeps());
+  });
+
+  onMessage('aliexpress:authFailed', ({ sender }) => {
+    void handleAliExpressAuthFailed(sender.tab?.id, getAliExpressDeps());
+  });
+
+  onMessage('scrape:parseFailure', ({ data, sender }) => {
+    void handleParseFailureMessage(data, sender.tab?.id);
+  });
+
+  onMessage('scrape:error', ({ data }) => {
+    console.error('[Orders] Scrape error:', data.error);
+    handleScrapeFailure(AMAZON_SITE);
+  });
+
+  onMessage('scrape:trigger', () => {
+    void startScrape(AMAZON_SITE);
+    void startScrape(ALIEXPRESS_SITE);
+  });
+
   browser.alarms.onAlarm.addListener(handleAlarm);
-  browser.runtime.onMessage.addListener(handleMessage);
   browser.notifications.onClicked.addListener(handleNotificationClick);
 
   browser.runtime.onInstalled.addListener(() => {
@@ -90,43 +130,6 @@ function handleNotificationClick(notificationId: string): void {
   if (url) {
     void browser.tabs.create({ url, active: true });
     clearNotificationUrl(notificationId);
-  }
-}
-
-function handleMessage(message: MessageType, sender: Browser.runtime.MessageSender): void {
-  if (message.type === 'ORDERS_SCRAPED' && message.site === AMAZON_SITE) {
-    void handleAmazonOrdersScraped(message.orders, sender.tab?.id, getAmazonDeps());
-    return;
-  }
-
-  if (message.type === 'ALIEXPRESS_ORDERS_DISCOVERED') {
-    void handleAliExpressOrdersDiscovered(message.orders, sender.tab?.id, getAliExpressDeps());
-    return;
-  }
-
-  if (message.type === 'ALIEXPRESS_ORDER_DETAILS_SCRAPED') {
-    handleAliExpressOrderDetailsMessage(message.details, sender.tab?.id, getAliExpressDeps());
-    return;
-  }
-
-  if (message.type === 'ALIEXPRESS_TRACKING_SCRAPED') {
-    handleAliExpressTrackingMessage(message.tracking, sender.tab?.id, getAliExpressDeps());
-    return;
-  }
-
-  if (message.type === 'ALIEXPRESS_AUTH_FAILED') {
-    void handleAliExpressAuthFailed(sender.tab?.id, getAliExpressDeps());
-    return;
-  }
-
-  if (message.type === 'PARSE_FAILURE') {
-    void handleParseFailureMessage(message, sender);
-    return;
-  }
-
-  if (message.type === 'SCRAPE_ERROR') {
-    console.error('[Orders] Scrape error:', message.error);
-    handleScrapeFailure(AMAZON_SITE);
   }
 }
 
@@ -181,7 +184,7 @@ async function openOrderListTab(site: OrderSite, url: string): Promise<number | 
       return null;
     }
 
-    trackScrapeTab(site, tab.id);
+    scrapeTabIds.add(tab.id);
     scheduleScrapeTimeout(site, tab.id);
     return tab.id;
   } catch (e) {
@@ -200,46 +203,51 @@ async function navigateScrapeTab(tabId: number, url: string): Promise<void> {
 }
 
 async function handleParseFailureMessage(
-  message: Extract<MessageType, { type: 'PARSE_FAILURE' }>,
-  sender: Browser.runtime.MessageSender
+  data: {
+    site: OrderSite;
+    phase: ParseFailurePhase;
+    reason?: string;
+    url?: string;
+    tabId?: number;
+  },
+  senderTabId: number | undefined
 ): Promise<void> {
-  const tabId = message.tabId ?? sender.tab?.id;
-  const label = getSiteLabel(message.site);
+  const tabId = data.tabId ?? senderTabId;
+  const label = getSiteLabel(data.site);
 
-  console.error(`[${label}] Parse failure (${message.phase})`, {
-    reason: message.reason,
-    url: message.url,
+  console.error(`[${label}] Parse failure (${data.phase})`, {
+    reason: data.reason,
+    url: data.url,
     tabId,
   });
 
-  if (message.site === ALIEXPRESS_SITE && message.phase === 'aliexpress-tracking') {
+  if (data.site === ALIEXPRESS_SITE && data.phase === 'aliexpress-tracking') {
     await handleAliExpressTrackingParseFailure(tabId, getAliExpressDeps());
-  } else if (message.site === ALIEXPRESS_SITE && message.phase === 'aliexpress-order-details') {
+  } else if (data.site === ALIEXPRESS_SITE && data.phase === 'aliexpress-order-details') {
     await handleAliExpressOrderDetailsParseFailure(tabId, getAliExpressDeps());
   } else if (tabId !== undefined) {
-    await closeScrapeTab(message.site, tabId);
+    await closeScrapeTab(tabId);
   }
 
-  await closeAllScrapeTabs(message.site);
+  await closeAllScrapeTabs();
 
-  if (!parseFailureNotifiedBySite[message.site]) {
-    parseFailureNotifiedBySite[message.site] = true;
-    await sendParseFailureNotification(message.site, message.reason, message.url);
+  if (!parseFailureNotifiedBySite[data.site]) {
+    parseFailureNotifiedBySite[data.site] = true;
+    await sendParseFailureNotification(data.site, data.reason, data.url);
   }
 
-  if (scrapeInProgressBySite[message.site]) {
-    handleScrapeFailure(message.site);
+  if (scrapeInProgressBySite[data.site]) {
+    handleScrapeFailure(data.site);
   }
 }
 
-async function closeAllScrapeTabs(site: OrderSite): Promise<void> {
-  const tabSet = scrapeTabIdsBySite.get(site);
-  if (!tabSet || tabSet.size === 0) {
+async function closeAllScrapeTabs(): Promise<void> {
+  if (scrapeTabIds.size === 0) {
     return;
   }
 
-  const tabIds = Array.from(tabSet);
-  await Promise.all(tabIds.map((tabId) => closeScrapeTab(site, tabId)));
+  const tabIds = Array.from(scrapeTabIds);
+  await Promise.all(tabIds.map((tabId) => closeScrapeTab(tabId)));
 }
 
 function scheduleScrapeTimeout(site: OrderSite, tabId: number): void {
@@ -255,7 +263,7 @@ function scheduleScrapeTimeout(site: OrderSite, tabId: number): void {
     }
 
     console.warn(`[${getSiteLabel(site)}] Scrape timed out`);
-    void closeScrapeTab(site, tabId);
+    void closeScrapeTab(tabId);
     handleScrapeFailure(site);
   }, SCRAPE_TIMEOUT_MS);
 
@@ -279,21 +287,12 @@ function handleScrapeFailure(site: OrderSite): void {
   void recordScrapeEnd(site);
 }
 
-function trackScrapeTab(site: OrderSite, tabId: number): void {
-  scrapeTabIdsBySite.get(site)?.add(tabId);
-}
-
-async function closeScrapeTab(site: OrderSite, tabId: number | undefined): Promise<void> {
+async function closeScrapeTab(tabId: number | undefined): Promise<void> {
   if (!tabId) {
     return;
   }
 
-  const tabSet = scrapeTabIdsBySite.get(site);
-  if (!tabSet?.has(tabId)) {
-    return;
-  }
-
-  tabSet.delete(tabId);
+  scrapeTabIds.delete(tabId);
   try {
     await browser.tabs.remove(tabId);
   } catch {

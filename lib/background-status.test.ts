@@ -21,6 +21,15 @@ const flushPromises = () =>
     setTimeout(resolve, 0);
   });
 
+/** Creates a message in the format @webext-core/messaging expects */
+let messageId = 0;
+const createMessage = <T>(type: string, data: T) => ({
+  type,
+  data,
+  timestamp: Date.now(),
+  id: ++messageId,
+});
+
 const initBackgroundEntrypoint = (entry: unknown) => {
   if (typeof entry === 'function') {
     entry();
@@ -45,6 +54,7 @@ beforeEach(async () => {
   fakeBrowser.reset();
   fakeBrowser.tabs.create = vi.fn(async () => ({ id: 1 }));
   fakeBrowser.tabs.remove = vi.fn(async () => undefined);
+  messageId = 0;
 });
 
 afterEach(() => {
@@ -139,8 +149,7 @@ describe('background scrape status', () => {
     await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
 
     await fakeBrowser.runtime.onMessage.trigger(
-      {
-        type: 'ORDERS_SCRAPED',
+      createMessage('orders:scraped', {
         site: 'amazon',
         orders: [
           {
@@ -156,7 +165,7 @@ describe('background scrape status', () => {
             isDelivered: true,
           },
         ],
-      },
+      }),
       { tab: { id: 1 } }
     );
     await flushPromises();
@@ -205,7 +214,7 @@ describe('background scrape status', () => {
     await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
 
     await fakeBrowser.runtime.onMessage.trigger(
-      { type: 'SCRAPE_ERROR', error: 'boom' },
+      createMessage('scrape:error', { error: 'boom' }),
       { tab: { id: 1 } }
     );
     await flushPromises();
@@ -252,7 +261,7 @@ describe('background scrape status', () => {
     };
 
     await fakeBrowser.runtime.onMessage.trigger(
-      { type: 'ALIEXPRESS_ORDER_DETAILS_SCRAPED', details },
+      createMessage('aliexpress:orderDetails', { details }),
       { tab: { id: 42 } }
     );
     await flushPromises();
@@ -317,13 +326,12 @@ describe('background parse failure notifications', () => {
     await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
 
     await fakeBrowser.runtime.onMessage.trigger(
-      {
-        type: 'PARSE_FAILURE',
+      createMessage('scrape:parseFailure', {
         site: 'amazon',
         phase: 'amazon-orders',
         reason: 'Missing order ID',
         url: 'https://www.amazon.ca/example',
-      },
+      }),
       { tab: { id: 1 } }
     );
     await flushPromises();
@@ -343,21 +351,19 @@ describe('background parse failure notifications', () => {
     await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
 
     await fakeBrowser.runtime.onMessage.trigger(
-      {
-        type: 'PARSE_FAILURE',
+      createMessage('scrape:parseFailure', {
         site: 'amazon',
         phase: 'amazon-orders',
-      },
+      }),
       { tab: { id: 1 } }
     );
     await fakeBrowser.runtime.onMessage.trigger(
-      {
-        type: 'PARSE_FAILURE',
+      createMessage('scrape:parseFailure', {
         site: 'amazon',
         phase: 'amazon-orders',
         reason: 'Another failure',
         url: 'https://www.amazon.ca/example-2',
-      },
+      }),
       { tab: { id: 1 } }
     );
     await flushPromises();

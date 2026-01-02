@@ -81,23 +81,3 @@ export interface StoredScrapeStatus {
   lastAlarmFiredAt: number | null;
   isScrapeInProgress: boolean;
 }
-
-/**
- * Message types for communication between content script and background.
- */
-export type MessageType =
-  | { type: 'ORDERS_SCRAPED'; site: OrderSite; orders: OrderStatus[] }
-  | { type: 'ALIEXPRESS_ORDERS_DISCOVERED'; orders: AliExpressDiscoveredOrder[] }
-  | { type: 'ALIEXPRESS_ORDER_DETAILS_SCRAPED'; details: AliExpressOrderDetailsResult }
-  | { type: 'ALIEXPRESS_TRACKING_SCRAPED'; tracking: AliExpressTrackingResult }
-  | { type: 'ALIEXPRESS_AUTH_FAILED' }
-  | {
-      type: 'PARSE_FAILURE';
-      site: OrderSite;
-      phase: ParseFailurePhase;
-      reason?: string;
-      url?: string;
-      tabId?: number;
-    }
-  | { type: 'SCRAPE_ERROR'; error: string }
-  | { type: 'TRIGGER_SCRAPE' };
