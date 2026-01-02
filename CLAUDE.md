@@ -57,3 +57,4 @@ Output lands in `.output/firefox-mv2`.
 - Content scripts run on any matching URL (including user-opened tabs). Background tracks which tabs it opened for scraping via `scrapeTabIds` Set to avoid closing user's tabs.
 - Polling interval is adaptive: 30 min default, 10 min if delivery expected today + not delivered + 7AM-10PM local time.
 - Dates are parsed into Temporal PlainDate and stored as ISO strings.
+- **Temporal API is available** in the browser without polyfills. Use it for all date/time operations.
