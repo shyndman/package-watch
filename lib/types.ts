@@ -40,6 +40,9 @@ export interface OrderStatus {
 
   /** Whether this order has been delivered */
   isDelivered: boolean;
+
+  /** ISO timestamp when delivery was first detected, null if not yet delivered */
+  deliveredAt: string | null;
 }
 
 export interface AliExpressDiscoveredOrder {

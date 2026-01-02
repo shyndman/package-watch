@@ -83,6 +83,7 @@ function parseOrderCard(card: HTMLElement, index: number): OrderStatus {
     orderDate,
     isDelivered,
     isDeliveryExpectedToday,
+    deliveredAt: null,
   };
 }
 

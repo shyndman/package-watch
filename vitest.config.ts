@@ -4,4 +4,7 @@ import { WxtVitest } from 'wxt/testing/vitest-plugin';
 
 export default defineConfig({
   plugins: [WxtVitest(), vue()],
+  test: {
+    setupFiles: ['./vitest.setup.ts'],
+  },
 });

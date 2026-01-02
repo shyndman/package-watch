@@ -1,6 +1,9 @@
 import { storage } from '@wxt-dev/storage';
 import type { OrderSite, OrderStatus, StoredOrderState, StoredScrapeStatus } from './types';
 
+/** Delivered orders are removed from storage after this duration */
+const DELIVERED_ORDER_RETENTION = Temporal.Duration.from({ days: 7 });
+
 type StorageKey = `local:${string}`;
 
 const ORDER_STATE_KEYS: Record<OrderSite, StorageKey> = {
@@ -79,21 +82,65 @@ export async function updateScrapeStatus(
  *
  * Delivered orders are immutable: once an order is marked delivered, its stored
  * state is frozen and will not be overwritten by new scrape data.
+ *
+ * Expired orders (delivered 7+ days ago, or delivered with missing deliveredAt)
+ * are filtered out during writes.
  */
 export async function saveOrders(site: OrderSite, orders: OrderStatus[]): Promise<void> {
   const stored = await getStoredOrders(site);
   const ordersRecord = { ...stored.orders };
+  const now = Temporal.Now.instant();
 
+  // Merge incoming orders, stamping deliveredAt on first delivery detection
   for (const order of orders) {
-    if (!ordersRecord[order.orderId]?.isDelivered) {
+    const existing = ordersRecord[order.orderId];
+    if (existing?.isDelivered) {
+      // Already delivered, preserve existing state (immutable)
+      continue;
+    }
+
+    if (order.isDelivered && !existing?.deliveredAt) {
+      // First time seeing this order as delivered - stamp deliveredAt
+      ordersRecord[order.orderId] = {
+        ...order,
+        deliveredAt: now.toString(),
+      };
+    } else {
       ordersRecord[order.orderId] = order;
     }
   }
 
+  // Filter out expired orders before writing
+  const filteredOrders: Record<string, OrderStatus> = {};
+  for (const [orderId, order] of Object.entries(ordersRecord)) {
+    if (!isOrderExpired(order, now)) {
+      filteredOrders[orderId] = order;
+    }
+  }
+
   await storage.setItem<StoredOrderState>(getOrderStateKey(site), {
-    orders: ordersRecord,
+    orders: filteredOrders,
     lastChecked: Date.now(),
   });
+}
+
+/**
+ * Check if a delivered order has expired.
+ * Expired means: isDelivered AND (deliveredAt is null OR older than retention period)
+ */
+function isOrderExpired(order: OrderStatus, now: Temporal.Instant): boolean {
+  if (!order.isDelivered) {
+    return false;
+  }
+
+  if (!order.deliveredAt) {
+    // Legacy delivered order without timestamp - expire immediately
+    return true;
+  }
+
+  const deliveredAt = Temporal.Instant.from(order.deliveredAt);
+  const elapsed = now.since(deliveredAt);
+  return Temporal.Duration.compare(elapsed, DELIVERED_ORDER_RETENTION) >= 0;
 }
 
 /**

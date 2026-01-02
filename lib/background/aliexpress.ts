@@ -292,6 +292,7 @@ function buildAliExpressOrderStatuses(
       orderDate: order.orderDate,
       isDeliveryExpectedToday: isEstimatedDeliveryToday(estimatedDelivery),
       isDelivered: tracking?.isDelivered ?? order.highLevelStatus === 'Completed',
+      deliveredAt: null,
     };
   });
 }
