@@ -1,7 +1,7 @@
 import type { OrderSite, OrderStatus } from '../types';
 import { AMAZON_SITE, getSiteLabel } from './scheduler';
 
-const NOTIFICATION_ICON_PATH = '/icon/128.png';
+const NOTIFICATION_ICON_PATH = '/icons/128.png';
 const NOTIFICATION_SOUND_PATH = '/assets/notification.mp3';
 const PRODUCT_SUMMARY_MAX_LENGTH = 50;
 const PRODUCT_SUMMARY_SUFFIX = '...';

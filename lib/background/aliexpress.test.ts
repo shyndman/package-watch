@@ -14,28 +14,19 @@ const flushPromises = () =>
 describe('AliExpress single-tab scrape', () => {
   let aliexpress: typeof import('./aliexpress');
   let deps: AliExpressDependencies;
-  let closeScrapeTabSpy: ReturnType<typeof vi.fn>;
-  let navigateScrapeTabSpy: ReturnType<typeof vi.fn>;
-  let processOrdersForSiteSpy: ReturnType<typeof vi.fn>;
-  let handleScrapeFailureSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.resetModules();
     aliexpress = await import('./aliexpress');
 
-    closeScrapeTabSpy = vi.fn();
-    navigateScrapeTabSpy = vi.fn();
-    processOrdersForSiteSpy = vi.fn();
-    handleScrapeFailureSpy = vi.fn();
-
     deps = {
       openOrderListTab: vi.fn(),
-      handleScrapeFailure: handleScrapeFailureSpy,
-      closeScrapeTab: closeScrapeTabSpy,
+      handleScrapeFailure: vi.fn(),
+      closeScrapeTab: vi.fn(),
       clearScrapeTimeout: vi.fn(),
-      processOrdersForSite: processOrdersForSiteSpy,
+      processOrdersForSite: vi.fn(),
       sendAuthFailedNotification: vi.fn(),
-      navigateScrapeTab: navigateScrapeTabSpy,
+      navigateScrapeTab: vi.fn(),
     };
   });
 
@@ -48,6 +39,7 @@ describe('AliExpress single-tab scrape', () => {
       orderId,
       highLevelStatus: completed ? 'Completed' : 'Awaiting delivery',
       orderDate: '2025-01-01',
+      storeName: 'Test Store',
       orderDetailsUrl: `https://www.aliexpress.com/p/order/detail.html?orderId=${orderId}`,
       trackingUrl: completed
         ? null
@@ -78,8 +70,8 @@ describe('AliExpress single-tab scrape', () => {
 
       // Wait for first navigation (order1 details)
       await flushPromises();
-      expect(navigateScrapeTabSpy).toHaveBeenCalledTimes(1);
-      expect(navigateScrapeTabSpy).toHaveBeenCalledWith(
+      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(1);
+      expect(deps.navigateScrapeTab).toHaveBeenCalledWith(
         tabId,
         'https://www.aliexpress.com/p/order/detail.html?orderId=order1'
       );
@@ -89,8 +81,8 @@ describe('AliExpress single-tab scrape', () => {
       await flushPromises();
 
       // Should navigate to order2 details
-      expect(navigateScrapeTabSpy).toHaveBeenCalledTimes(2);
-      expect(navigateScrapeTabSpy).toHaveBeenLastCalledWith(
+      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(2);
+      expect(deps.navigateScrapeTab).toHaveBeenLastCalledWith(
         tabId,
         'https://www.aliexpress.com/p/order/detail.html?orderId=order2'
       );
@@ -100,8 +92,8 @@ describe('AliExpress single-tab scrape', () => {
       await flushPromises();
 
       // Should navigate to order1 tracking
-      expect(navigateScrapeTabSpy).toHaveBeenCalledTimes(3);
-      expect(navigateScrapeTabSpy).toHaveBeenLastCalledWith(
+      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(3);
+      expect(deps.navigateScrapeTab).toHaveBeenLastCalledWith(
         tabId,
         'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=order1'
       );
@@ -111,8 +103,8 @@ describe('AliExpress single-tab scrape', () => {
       await flushPromises();
 
       // Should navigate to order2 tracking
-      expect(navigateScrapeTabSpy).toHaveBeenCalledTimes(4);
-      expect(navigateScrapeTabSpy).toHaveBeenLastCalledWith(
+      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(4);
+      expect(deps.navigateScrapeTab).toHaveBeenLastCalledWith(
         tabId,
         'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=order2'
       );
@@ -122,11 +114,11 @@ describe('AliExpress single-tab scrape', () => {
       await scrapePromise;
 
       // Tab should be closed exactly once at the end
-      expect(closeScrapeTabSpy).toHaveBeenCalledTimes(1);
-      expect(closeScrapeTabSpy).toHaveBeenCalledWith('aliexpress', tabId);
+      expect(deps.closeScrapeTab).toHaveBeenCalledTimes(1);
+      expect(deps.closeScrapeTab).toHaveBeenCalledWith('aliexpress', tabId);
 
       // Orders should be processed
-      expect(processOrdersForSiteSpy).toHaveBeenCalledTimes(1);
+      expect(deps.processOrdersForSite).toHaveBeenCalledTimes(1);
     });
 
     it('skips tracking for completed orders', async () => {
@@ -145,8 +137,8 @@ describe('AliExpress single-tab scrape', () => {
       await flushPromises();
 
       // Only tracking for order2 (order1 is completed)
-      expect(navigateScrapeTabSpy).toHaveBeenCalledTimes(3); // 2 details + 1 tracking
-      expect(navigateScrapeTabSpy).toHaveBeenLastCalledWith(
+      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(3); // 2 details + 1 tracking
+      expect(deps.navigateScrapeTab).toHaveBeenLastCalledWith(
         tabId,
         'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=order2'
       );
@@ -154,25 +146,26 @@ describe('AliExpress single-tab scrape', () => {
       aliexpress.handleAliExpressTrackingMessage(makeTracking('order2'), tabId, deps);
       await scrapePromise;
 
-      expect(closeScrapeTabSpy).toHaveBeenCalledTimes(1);
+      expect(deps.closeScrapeTab).toHaveBeenCalledTimes(1);
     });
 
     it('closes tab on failure when no tabId provided', async () => {
       await aliexpress.handleAliExpressOrdersDiscovered([], undefined, deps);
 
-      expect(handleScrapeFailureSpy).toHaveBeenCalledWith('aliexpress');
-      expect(navigateScrapeTabSpy).not.toHaveBeenCalled();
+      expect(deps.handleScrapeFailure).toHaveBeenCalledWith('aliexpress');
+      expect(deps.navigateScrapeTab).not.toHaveBeenCalled();
     });
   });
 
   describe('handleAliExpressOrderDetailsMessage', () => {
     it('resolves pending request without closing tab', async () => {
       const tabId = 42;
-      const orders = [
+      const orders: AliExpressDiscoveredOrder[] = [
         {
           orderId: 'order1',
-          highLevelStatus: 'Completed' as const,
+          highLevelStatus: 'Completed',
           orderDate: '2025-01-01',
+          storeName: 'Test Store',
           orderDetailsUrl: 'https://www.aliexpress.com/p/order/detail.html?orderId=order1',
           trackingUrl: null,
         },
@@ -192,18 +185,19 @@ describe('AliExpress single-tab scrape', () => {
       await scrapePromise;
 
       // Tab should only be closed once at the end by orchestrator, not by message handler
-      expect(closeScrapeTabSpy).toHaveBeenCalledTimes(1);
+      expect(deps.closeScrapeTab).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('handleAliExpressTrackingMessage', () => {
     it('resolves pending request without closing tab', async () => {
       const tabId = 42;
-      const orders = [
+      const orders: AliExpressDiscoveredOrder[] = [
         {
           orderId: 'order1',
-          highLevelStatus: 'Awaiting delivery' as const,
+          highLevelStatus: 'Awaiting delivery',
           orderDate: '2025-01-01',
+          storeName: 'Test Store',
           orderDetailsUrl: 'https://www.aliexpress.com/p/order/detail.html?orderId=order1',
           trackingUrl: 'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=order1',
         },
@@ -237,7 +231,7 @@ describe('AliExpress single-tab scrape', () => {
       await scrapePromise;
 
       // Tab closed once at the end
-      expect(closeScrapeTabSpy).toHaveBeenCalledTimes(1);
+      expect(deps.closeScrapeTab).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -245,11 +239,12 @@ describe('AliExpress single-tab scrape', () => {
     it('closes tab on order details parse failure', async () => {
       const tabId = 42;
       // Use a completed order so there's no tracking phase after details
-      const orders = [
+      const orders: AliExpressDiscoveredOrder[] = [
         {
           orderId: 'order1',
-          highLevelStatus: 'Completed' as const,
+          highLevelStatus: 'Completed',
           orderDate: '2025-01-01',
+          storeName: 'Test Store',
           orderDetailsUrl: 'https://www.aliexpress.com/p/order/detail.html?orderId=order1',
           trackingUrl: null,
         },
@@ -266,16 +261,17 @@ describe('AliExpress single-tab scrape', () => {
       await scrapePromise;
 
       // Tab should be closed by parse failure handler
-      expect(closeScrapeTabSpy).toHaveBeenCalledWith('aliexpress', tabId);
+      expect(deps.closeScrapeTab).toHaveBeenCalledWith('aliexpress', tabId);
     });
 
     it('closes tab on tracking parse failure', async () => {
       const tabId = 42;
-      const orders = [
+      const orders: AliExpressDiscoveredOrder[] = [
         {
           orderId: 'order1',
-          highLevelStatus: 'Awaiting delivery' as const,
+          highLevelStatus: 'Awaiting delivery',
           orderDate: '2025-01-01',
+          storeName: 'Test Store',
           orderDetailsUrl: 'https://www.aliexpress.com/p/order/detail.html?orderId=order1',
           trackingUrl: 'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=order1',
         },
@@ -298,7 +294,7 @@ describe('AliExpress single-tab scrape', () => {
       await scrapePromise;
 
       // Tab should be closed by parse failure handler
-      expect(closeScrapeTabSpy).toHaveBeenCalledWith('aliexpress', tabId);
+      expect(deps.closeScrapeTab).toHaveBeenCalledWith('aliexpress', tabId);
     });
   });
 });
