@@ -239,7 +239,7 @@ function parseDateToISO(dateText: string, orderId: string): string {
     );
   }
 
-  const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();
+  const year = yearRaw ? parseInt(yearRaw, 10) : Temporal.Now.plainDateISO().year;
 
   return toISODateString(year, month, parseInt(dayRaw, 10));
 }

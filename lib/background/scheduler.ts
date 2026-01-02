@@ -52,7 +52,7 @@ function calculateInterval(site: OrderSite, orders: OrderStatus[]): number {
     return DEFAULT_INTERVAL_MINUTES_BY_SITE[site];
   }
 
-  const hour = new Date().getHours();
+  const hour = Temporal.Now.plainDateTimeISO().hour;
   const isActiveHours = hour >= ACTIVE_HOURS_START && hour < ACTIVE_HOURS_END;
 
   return isActiveHours

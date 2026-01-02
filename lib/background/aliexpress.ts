@@ -15,18 +15,18 @@ const ALIEXPRESS_TRACKING_URL_BASE =
 
 const ESTIMATED_DELIVERY_REGEX = /([A-Za-z]{3})\s+(\d{1,2})/;
 const MONTH_MAP: Record<string, number> = {
-  jan: 0,
-  feb: 1,
-  mar: 2,
-  apr: 3,
-  may: 4,
-  jun: 5,
-  jul: 6,
-  aug: 7,
-  sep: 8,
-  oct: 9,
-  nov: 10,
-  dec: 11,
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
 };
 
 export type AliExpressDependencies = {
@@ -322,14 +322,19 @@ function isEstimatedDeliveryToday(estimatedDelivery: string | null): boolean {
     return false;
   }
 
-  const now = new Date();
-  const deliveryDate = new Date(now.getFullYear(), month, parseInt(dayRaw, 10));
-  if (deliveryDate.getMonth() < now.getMonth() - 1) {
-    deliveryDate.setFullYear(now.getFullYear() + 1);
+  const today = Temporal.Now.plainDateISO();
+  let deliveryDate = Temporal.PlainDate.from({
+    year: today.year,
+    month,
+    day: parseInt(dayRaw, 10),
+  });
+
+  // If delivery date is more than a month in the past, assume it's next year
+  if (today.since(deliveryDate).total('days') > 30) {
+    deliveryDate = deliveryDate.with({ year: today.year + 1 });
   }
 
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return deliveryDate.getTime() === today.getTime();
+  return Temporal.PlainDate.compare(deliveryDate, today) === 0;
 }
 
 function buildAliExpressTrackingUrl(orderId: string): string {
