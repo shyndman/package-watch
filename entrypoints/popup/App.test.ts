@@ -128,4 +128,35 @@ describe('popup status display', () => {
 
     app.unmount();
   });
+
+  it('closes the popup when an order is clicked', async () => {
+    vi.doMock('@/lib/storage', () => ({
+      getScrapeStatus: vi.fn(async () => makeScrapeStatus()),
+      getStoredOrders: vi.fn(async () => makeStoredOrders([{ isDelivered: false }])),
+    }));
+
+    const originalClose = window.close;
+    const closeSpy = vi.fn();
+    Object.defineProperty(window, 'close', {
+      value: closeSpy,
+      configurable: true,
+      writable: true,
+    });
+
+    const { app, root } = await mountApp();
+
+    const orderCard = root.querySelector('.order-card');
+    expect(orderCard).not.toBeNull();
+    orderCard?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(window, 'close', {
+      value: originalClose,
+      configurable: true,
+      writable: true,
+    });
+
+    app.unmount();
+  });
 });

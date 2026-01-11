@@ -72,6 +72,10 @@ function compareOrders(a: OrderStatus, b: OrderStatus): number {
   }
 }
 
+function closePopup(): void {
+  window.close();
+}
+
 async function buildSiteViewState(config: SiteConfig): Promise<SiteViewState> {
   const [storedOrders, scrapeStatus] = await Promise.all([
     getStoredOrders(config.site),
@@ -127,21 +131,23 @@ onMounted(() => {
     </header>
 
     <section class="order-list">
-      <article
+      <a
         v-for="order in orders"
         :key="order.orderId"
+        :href="order.orderUrl"
+        target="_blank"
         class="order-card"
         :class="{ delivered: order.isDelivered }"
+        @click="closePopup"
       >
         <div class="order-header">
           <span class="site-badge">{{ order.site }}</span>
           <span class="product-title">{{ productDisplay(order) }}</span>
-          <a :href="order.orderUrl" target="_blank" class="order-link">↗</a>
         </div>
         <div class="order-status">
           {{ order.status }}{{ order.statusDetail ? ' · ' + order.statusDetail : '' }}
         </div>
-      </article>
+      </a>
 
       <div v-if="orders.length === 0" class="empty-state">
         No orders being tracked
