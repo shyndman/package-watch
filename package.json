@@ -1,5 +1,5 @@
 {
-  "name": "browser-automations",
+  "name": "package-watch",
   "description": "Automated browser tasks including Amazon order notifications",
   "private": true,
   "version": "0.0.0",
@@ -11,7 +11,7 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
-    "xpi:firefox": "wxt zip -b firefox && mv .output/browser-automations-0.0.0-firefox.zip .output/browser-automations.xpi",
+    "xpi:firefox": "wxt zip -b firefox && mv .output/package-watch-0.0.0-firefox.zip .output/package-watch.xpi",
     "test": "vitest",
     "typecheck": "vue-tsc --noEmit",
     "compile": "vue-tsc --noEmit",

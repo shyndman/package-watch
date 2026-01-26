@@ -4,13 +4,13 @@ import { defineConfig } from 'wxt';
 export default defineConfig({
   modules: ['@wxt-dev/module-vue', '@wxt-dev/auto-icons'],
   manifest: {
-    name: 'Browser Automations',
+    name: 'Package Watch',
     description: 'Automated browser tasks including Amazon order notifications',
     permissions: ['alarms', 'notifications', 'storage', 'tabs'],
     host_permissions: ['*://www.amazon.ca/*', '*://www.aliexpress.com/*'],
     browser_specific_settings: {
       gecko: {
-        id: 'browser-automations@shyndman.dev',
+        id: 'package-watch@shyndman.dev',
       },
     },
   },
