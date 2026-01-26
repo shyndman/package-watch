@@ -1,7 +1,10 @@
-# WXT + Vue 3
+# Package Watch
 
-This template should help get you started developing with Vue 3 in WXT.
+Package Watch is a WXT + Vue browser extension that keeps an eye on your Amazon and AliExpress orders so you don’t have to refresh dashboards. It opens the sites in background tabs, extracts delivery details, and notifies you when something changes.
 
-## Recommended IDE Setup
+## Getting Started
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar).
+1. Install dependencies: `pnpm install`
+2. Run the extension in development mode: `pnpm dev`
+
+Build, test, and packaging commands live in `package.json` if you need more.
