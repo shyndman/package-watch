@@ -25,6 +25,7 @@ import {
   getSiteLabel,
   scheduleNextCheck,
 } from '../lib/background/scheduler';
+import { updateInFlightBadge } from '../lib/background/badge';
 import { onMessage } from '../lib/messaging';
 
 /** Tracks all tabs opened by this extension for scraping. */
@@ -51,6 +52,9 @@ const ALARM_LOG_SUFFIX = ' order check started';
 
 export default defineBackground(() => {
   console.log('[Orders] Background script loaded');
+
+  // Initialize toolbar badge from stored state.
+  void updateInFlightBadge();
 
   // Register all message handlers
   onMessage('scrape:checkActivation', ({ sender }) => {
@@ -318,6 +322,8 @@ async function processOrdersForSite(site: OrderSite, orders: OrderStatus[]): Pro
   }
 
   await saveOrders(site, orders);
+  // Keep toolbar badge in sync with stored order state.
+  void updateInFlightBadge();
   scheduleNextCheck(site, orders);
   scrapeInProgressBySite[site] = false;
   void recordScrapeEnd(site);

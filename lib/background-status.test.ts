@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const startScrapeSpy = vi.fn();
 const scheduleNextCheckSpy = vi.fn();
+const updateInFlightBadgeSpy = vi.fn();
 
 const makeStorageStub = () => {
   const store = new Map<string, unknown>();
@@ -94,10 +95,16 @@ describe('background scrape status', () => {
       };
     });
 
+    vi.doMock('../lib/background/badge', () => ({
+      updateInFlightBadge: updateInFlightBadgeSpy,
+    }));
+
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const { default: entrypoint } = await import('../entrypoints/background');
     initBackgroundEntrypoint(entrypoint);
+
+    expect(updateInFlightBadgeSpy).toHaveBeenCalledTimes(1);
 
     await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
     await flushPromises();
@@ -143,8 +150,14 @@ describe('background scrape status', () => {
       };
     });
 
+    vi.doMock('../lib/background/badge', () => ({
+      updateInFlightBadge: updateInFlightBadgeSpy,
+    }));
+
     const { default: entrypoint } = await import('../entrypoints/background');
     initBackgroundEntrypoint(entrypoint);
+
+    expect(updateInFlightBadgeSpy).toHaveBeenCalledTimes(1);
 
     await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
 
@@ -169,6 +182,9 @@ describe('background scrape status', () => {
       { tab: { id: 1 } }
     );
     await flushPromises();
+
+    // Called once on init, and again after successful order save.
+    expect(updateInFlightBadgeSpy).toHaveBeenCalledTimes(2);
 
     const status = await storageStub.storage.getItem('local:amazonScrapeStatus');
     expect(status).toEqual({
@@ -208,8 +224,14 @@ describe('background scrape status', () => {
       };
     });
 
+    vi.doMock('../lib/background/badge', () => ({
+      updateInFlightBadge: updateInFlightBadgeSpy,
+    }));
+
     const { default: entrypoint } = await import('../entrypoints/background');
     initBackgroundEntrypoint(entrypoint);
+
+    expect(updateInFlightBadgeSpy).toHaveBeenCalledTimes(1);
 
     await fakeBrowser.alarms.onAlarm.trigger({ name: 'scrape-amazon' });
 
@@ -251,8 +273,14 @@ describe('background scrape status', () => {
       handleAliExpressTrackingParseFailure: vi.fn(),
     }));
 
+    vi.doMock('../lib/background/badge', () => ({
+      updateInFlightBadge: updateInFlightBadgeSpy,
+    }));
+
     const { default: entrypoint } = await import('../entrypoints/background');
     initBackgroundEntrypoint(entrypoint);
+
+    expect(updateInFlightBadgeSpy).toHaveBeenCalledTimes(1);
 
     const details = {
       orderId: '8207771346365504',
