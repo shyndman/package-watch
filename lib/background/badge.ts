@@ -5,7 +5,7 @@ const SUPPORTED_SITES: readonly OrderSite[] = ['amazon', 'aliexpress'] as const;
 
 const INFLIGHT_BADGE_MAX = 99;
 const INFLIGHT_BADGE_CAPPED_TEXT = '99+';
-const INFLIGHT_BADGE_BACKGROUND_COLOR = '#d9480f';
+const INFLIGHT_BADGE_BACKGROUND_COLOR = '#fcc419';
 
 type BrowserActionApi = {
   setBadgeText(details: { text?: string | null; tabId?: number; windowId?: number }): Promise<void>;
