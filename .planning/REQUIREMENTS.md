@@ -68,33 +68,33 @@ Explicit exclusions for this milestone.
 
 ## Traceability
 
-Roadmap mapping placeholder. Updated during roadmap creation.
+Roadmap mapping for current milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CARR-01 | TBD | Pending |
-| CARR-02 | TBD | Pending |
-| CARR-03 | TBD | Pending |
-| CARR-04 | TBD | Pending |
-| INTK-01 | TBD | Pending |
-| INTK-02 | TBD | Pending |
-| INTK-03 | TBD | Pending |
-| INTK-04 | TBD | Pending |
-| INTK-05 | TBD | Pending |
-| CTXM-01 | TBD | Pending |
-| CTXM-02 | TBD | Pending |
-| CTXM-03 | TBD | Pending |
-| MQTT-01 | TBD | Pending |
-| MQTT-02 | TBD | Pending |
-| MQTT-03 | TBD | Pending |
-| MQTT-04 | TBD | Pending |
-| MQTT-05 | TBD | Pending |
+| CARR-01 | Phase 1 | Pending |
+| CARR-02 | Phase 1 | Pending |
+| CARR-03 | Phase 1 | Pending |
+| CARR-04 | Phase 1 | Pending |
+| INTK-01 | Phase 2 | Pending |
+| INTK-02 | Phase 2 | Pending |
+| INTK-03 | Phase 2 | Pending |
+| INTK-04 | Phase 2 | Pending |
+| INTK-05 | Phase 2 | Pending |
+| CTXM-01 | Phase 3 | Pending |
+| CTXM-02 | Phase 3 | Pending |
+| CTXM-03 | Phase 3 | Pending |
+| MQTT-01 | Phase 4 | Pending |
+| MQTT-02 | Phase 4 | Pending |
+| MQTT-03 | Phase 4 | Pending |
+| MQTT-04 | Phase 4 | Pending |
+| MQTT-05 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-09*
-*Last updated: 2026-02-09 after initial definition*
+*Last updated: 2026-02-09 after roadmap creation*
