@@ -50,6 +50,11 @@ const ALARM_LOG_LABEL_BY_SITE: Record<OrderSite, string> = {
 const ALARM_LOG_PREFIX = 'Alarm fired: ';
 const ALARM_LOG_SUFFIX = ' order check started';
 
+/** Pause before navigating the scrape tab to each page, to avoid bot-like rapid navigation. */
+const PAGE_DWELL_MS = 3000;
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 export default defineBackground(() => {
   console.log('[Orders] Background script loaded');
 
@@ -199,6 +204,7 @@ async function openOrderListTab(site: OrderSite, url: string): Promise<number | 
 
 async function navigateScrapeTab(tabId: number, url: string): Promise<void> {
   try {
+    await delay(PAGE_DWELL_MS);
     await browser.tabs.update(tabId, { url });
   } catch (e) {
     console.error(`[${getSiteLabel(ALIEXPRESS_SITE)}] Error navigating scrape tab:`, e);
