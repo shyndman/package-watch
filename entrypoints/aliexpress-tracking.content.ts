@@ -39,7 +39,7 @@ const NODE_DESC_SELECTOR = '[class*="nodeDesc"]';
 const NODE_TIME_SELECTOR = '[class*="nodeTime"]';
 const ORDER_ID_PARAM = 'tradeOrderId';
 
-const ESTIMATED_DELIVERY_REGEX = /Estimated delivery:\s*([^,]+)/i;
+const ESTIMATED_DELIVERY_REGEX = /Delivery:\s*([^,]+)/i;
 const ESTIMATED_DELIVERY_DATE_REGEX = /([A-Za-z]{3})\s+(\d{1,2})/;
 const ESTIMATED_DELIVERY_MONTHS = new Set([
   'jan',
@@ -99,7 +99,7 @@ function parseHeaderInfo(headerEl: HTMLElement): {
   estimatedDelivery: string | null;
 } {
   const headerText = headerEl.textContent?.trim() ?? '';
-  const hasEstimatedDelivery = headerText.toLowerCase().includes('estimated delivery');
+  const hasEstimatedDelivery = headerText.toLowerCase().includes('delivery:');
   const isDelivered = headerText.toLowerCase().includes('delivered');
   const estimatedDeliveryMatch = headerText.match(ESTIMATED_DELIVERY_REGEX);
   const estimatedDelivery = estimatedDeliveryMatch?.[1]?.trim() ?? null;
