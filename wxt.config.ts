@@ -7,7 +7,7 @@ export default defineConfig({
     name: 'Package Watch',
     description: 'Automated browser tasks including Amazon order notifications',
     permissions: ['alarms', 'notifications', 'storage', 'tabs'],
-    host_permissions: ['*://www.amazon.ca/*', '*://www.aliexpress.com/*'],
+    host_permissions: ['*://www.amazon.ca/*', '*://www.aliexpress.com/*', '*://www.ebay.ca/*'],
     browser_specific_settings: {
       gecko: {
         id: 'package-watch@shyndman.dev',

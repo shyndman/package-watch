@@ -1,10 +1,11 @@
-export type OrderSite = 'amazon' | 'aliexpress';
+export type OrderSite = 'amazon' | 'aliexpress' | 'ebay';
 
 export type ParseFailurePhase =
   | 'amazon-orders'
   | 'aliexpress-orders'
   | 'aliexpress-order-details'
   | 'aliexpress-tracking'
+  | 'ebay-orders'
   | 'background-parse';
 
 /**

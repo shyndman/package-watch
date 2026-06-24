@@ -9,11 +9,13 @@ type StorageKey = `local:${string}`;
 const ORDER_STATE_KEYS: Record<OrderSite, StorageKey> = {
   amazon: 'local:amazonOrderState',
   aliexpress: 'local:aliexpressOrderState',
+  ebay: 'local:ebayOrderState',
 };
 
 const SCRAPE_STATUS_KEYS: Record<OrderSite, StorageKey> = {
   amazon: 'local:amazonScrapeStatus',
   aliexpress: 'local:aliexpressScrapeStatus',
+  ebay: 'local:ebayScrapeStatus',
 };
 
 const LEGACY_AMAZON_STATE_KEY: StorageKey = 'local:orderState';
@@ -21,6 +23,7 @@ const LEGACY_AMAZON_STATE_KEY: StorageKey = 'local:orderState';
 const DELIVERED_TERMINAL_BY_SITE: Record<OrderSite, boolean> = {
   amazon: true,
   aliexpress: true,
+  ebay: true,
 };
 
 const DEFAULT_SCRAPE_STATUS: StoredScrapeStatus = {

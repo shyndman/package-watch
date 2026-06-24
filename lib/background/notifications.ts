@@ -1,5 +1,5 @@
 import type { OrderSite, OrderStatus } from '../types';
-import { AMAZON_SITE, getSiteLabel } from './scheduler';
+import { getSiteLabel } from './scheduler';
 
 const NOTIFICATION_ICON_PATH = '/icons/128.png';
 const NOTIFICATION_SOUND_PATH = '/assets/notification.mp3';
@@ -52,14 +52,14 @@ export async function sendParseFailureNotification(
   reason?: string,
   url?: string
 ): Promise<void> {
-  const title =
-    site === AMAZON_SITE
-      ? 'Amazon parsing may be broken'
-      : 'AliExpress parsing may be broken';
-  const baseMessage =
-    site === AMAZON_SITE
-      ? 'Parsing failed. The Amazon page structure may have changed.'
-      : 'Parsing failed. The AliExpress page structure may have changed.';
+  const SITE_NAMES: Record<OrderSite, string> = {
+    amazon: 'Amazon',
+    aliexpress: 'AliExpress',
+    ebay: 'eBay',
+  };
+  const name = SITE_NAMES[site];
+  const title = `${name} parsing may be broken`;
+  const baseMessage = `Parsing failed. The ${name} page structure may have changed.`;
   const messageParts = [baseMessage];
   if (reason) {
     messageParts.push(`Reason: ${reason}`);

@@ -2,18 +2,22 @@ import type { OrderSite, OrderStatus } from '../types';
 
 export const AMAZON_SITE: OrderSite = 'amazon';
 export const ALIEXPRESS_SITE: OrderSite = 'aliexpress';
+export const EBAY_SITE: OrderSite = 'ebay';
 
 const AMAZON_ALARM_NAME = 'scrape-amazon';
 const ALIEXPRESS_ALARM_NAME = 'scrape-aliexpress';
+const EBAY_ALARM_NAME = 'scrape-ebay';
 
 const DEFAULT_INTERVAL_MINUTES_BY_SITE: Record<OrderSite, number> = {
   amazon: 30,
   aliexpress: 120,
+  ebay: 120,
 };
 
 const ACTIVE_INTERVAL_MINUTES_BY_SITE: Record<OrderSite, number> = {
   amazon: 10,
   aliexpress: 10,
+  ebay: 10,
 };
 
 const ACTIVE_HOURS_START = 7;
@@ -24,10 +28,17 @@ export const SCRAPE_TIMEOUT_MS = 30000;
 const SITE_LABELS: Record<OrderSite, string> = {
   amazon: 'Amazon Orders',
   aliexpress: 'AliExpress Orders',
+  ebay: 'eBay Orders',
+};
+
+const ALARM_NAMES_BY_SITE: Record<OrderSite, string> = {
+  amazon: AMAZON_ALARM_NAME,
+  aliexpress: ALIEXPRESS_ALARM_NAME,
+  ebay: EBAY_ALARM_NAME,
 };
 
 export function getAlarmName(site: OrderSite): string {
-  return site === AMAZON_SITE ? AMAZON_ALARM_NAME : ALIEXPRESS_ALARM_NAME;
+  return ALARM_NAMES_BY_SITE[site];
 }
 
 export function getSiteLabel(site: OrderSite): string {

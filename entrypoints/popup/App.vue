@@ -22,6 +22,7 @@ const IN_PROGRESS_LABEL = 'In progress';
 const SITE_CONFIG: SiteConfig[] = [
   { site: 'amazon', label: 'Amazon' },
   { site: 'aliexpress', label: 'AliExpress' },
+  { site: 'ebay', label: 'eBay' },
 ];
 
 const sites = ref<SiteViewState[]>(

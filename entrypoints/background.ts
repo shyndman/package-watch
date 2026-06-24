@@ -10,6 +10,7 @@ import {
   performAliExpressScrape,
 } from '../lib/background/aliexpress';
 import { handleAmazonOrdersScraped, performAmazonScrape } from '../lib/background/amazon';
+import { handleEbayOrdersScraped, performEbayScrape } from '../lib/background/ebay';
 import {
   clearNotificationUrl,
   getNotificationUrl,
@@ -20,6 +21,7 @@ import {
 import {
   ALIEXPRESS_SITE,
   AMAZON_SITE,
+  EBAY_SITE,
   SCRAPE_TIMEOUT_MS,
   getAlarmName,
   getSiteLabel,
@@ -34,11 +36,13 @@ const scrapeTabIds = new Set<number>();
 const scrapeInProgressBySite: Record<OrderSite, boolean> = {
   amazon: false,
   aliexpress: false,
+  ebay: false,
 };
 
 const parseFailureNotifiedBySite: Record<OrderSite, boolean> = {
   amazon: false,
   aliexpress: false,
+  ebay: false,
 };
 
 const orderListTimeouts = new Map<OrderSite, ReturnType<typeof setTimeout>>();
@@ -46,6 +50,7 @@ const orderListTimeouts = new Map<OrderSite, ReturnType<typeof setTimeout>>();
 const ALARM_LOG_LABEL_BY_SITE: Record<OrderSite, string> = {
   amazon: 'Amazon',
   aliexpress: 'AliExpress',
+  ebay: 'eBay',
 };
 const ALARM_LOG_PREFIX = 'Alarm fired: ';
 const ALARM_LOG_SUFFIX = ' order check started';
@@ -70,6 +75,8 @@ export default defineBackground(() => {
   onMessage('orders:scraped', ({ data, sender }) => {
     if (data.site === AMAZON_SITE) {
       void handleAmazonOrdersScraped(data.orders, sender.tab?.id, getAmazonDeps());
+    } else if (data.site === EBAY_SITE) {
+      void handleEbayOrdersScraped(data.orders, sender.tab?.id, getEbayDeps());
     }
   });
 
@@ -101,6 +108,7 @@ export default defineBackground(() => {
   onMessage('scrape:trigger', () => {
     void startScrape(AMAZON_SITE);
     void startScrape(ALIEXPRESS_SITE);
+    void startScrape(EBAY_SITE);
   });
 
   browser.alarms.onAlarm.addListener(handleAlarm);
@@ -110,16 +118,20 @@ export default defineBackground(() => {
     console.log('[Orders] Extension installed, setting up alarms');
     scheduleNextCheck(AMAZON_SITE, []);
     scheduleNextCheck(ALIEXPRESS_SITE, []);
+    scheduleNextCheck(EBAY_SITE, []);
     void startScrape(AMAZON_SITE);
     void startScrape(ALIEXPRESS_SITE);
+    void startScrape(EBAY_SITE);
   });
 
   browser.runtime.onStartup.addListener(() => {
     console.log('[Orders] Browser started, checking alarms');
     scheduleNextCheck(AMAZON_SITE, []);
     scheduleNextCheck(ALIEXPRESS_SITE, []);
+    scheduleNextCheck(EBAY_SITE, []);
     void startScrape(AMAZON_SITE);
     void startScrape(ALIEXPRESS_SITE);
+    void startScrape(EBAY_SITE);
   });
 });
 
@@ -131,6 +143,11 @@ function handleAlarm(alarm: Browser.alarms.Alarm): void {
 
   if (alarm.name === getAlarmName(ALIEXPRESS_SITE)) {
     void startScrape(ALIEXPRESS_SITE);
+    return;
+  }
+
+  if (alarm.name === getAlarmName(EBAY_SITE)) {
+    void startScrape(EBAY_SITE);
   }
 }
 
@@ -157,10 +174,25 @@ async function startScrape(site: OrderSite): Promise<void> {
     return;
   }
 
+  if (site === EBAY_SITE) {
+    void performEbayScrape(getEbayDeps());
+    return;
+  }
+
   void performAliExpressScrape(getAliExpressDeps());
 }
 
 function getAmazonDeps() {
+  return {
+    openOrderListTab,
+    handleScrapeFailure,
+    closeScrapeTab,
+    clearScrapeTimeout,
+    processOrdersForSite,
+  };
+}
+
+function getEbayDeps() {
   return {
     openOrderListTab,
     handleScrapeFailure,
