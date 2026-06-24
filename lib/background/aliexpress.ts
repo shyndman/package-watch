@@ -13,7 +13,7 @@ const ALIEXPRESS_ORDER_DETAILS_URL_BASE =
 const ALIEXPRESS_TRACKING_URL_BASE =
   'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=';
 
-const ESTIMATED_DELIVERY_REGEX = /([A-Za-z]{3})\s+(\d{1,2})/;
+const ESTIMATED_DELIVERY_REGEX = /([A-Za-z]{3})\.?\s+(\d{1,2})/g;
 const MONTH_MAP: Record<string, number> = {
   jan: 1,
   feb: 2,
@@ -306,17 +306,19 @@ function buildAliExpressStatusDetail(tracking: AliExpressTrackingResult | null):
   return parts.join(' ');
 }
 
-function isEstimatedDeliveryToday(estimatedDelivery: string | null): boolean {
+export function isEstimatedDeliveryToday(estimatedDelivery: string | null): boolean {
   if (!estimatedDelivery) {
     return false;
   }
 
-  const match = estimatedDelivery.match(ESTIMATED_DELIVERY_REGEX);
-  if (!match) {
+  // A range (e.g. "Jun. 28 - Jul. 05") has not refined to a delivery day yet; only a
+  // single date counts as "expected today".
+  const matches = [...estimatedDelivery.matchAll(ESTIMATED_DELIVERY_REGEX)];
+  if (matches.length !== 1) {
     return false;
   }
 
-  const [, monthAbbr, dayRaw] = match;
+  const [, monthAbbr, dayRaw] = matches[0];
   const month = MONTH_MAP[monthAbbr.toLowerCase()];
   if (month === undefined) {
     return false;

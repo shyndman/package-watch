@@ -298,3 +298,55 @@ describe('AliExpress single-tab scrape', () => {
     });
   });
 });
+
+describe('isEstimatedDeliveryToday', () => {
+  const MONTHS = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  let isEstimatedDeliveryToday: typeof import('./aliexpress').isEstimatedDeliveryToday;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ isEstimatedDeliveryToday } = await import('./aliexpress'));
+  });
+
+  const fmt = (date: Temporal.PlainDate, withPeriod: boolean): string =>
+    `${MONTHS[date.month - 1]}${withPeriod ? '.' : ''} ${date.day}`;
+
+  it('returns true for a single date that is today, with a period', () => {
+    const today = Temporal.Now.plainDateISO();
+    expect(isEstimatedDeliveryToday(`Delivery: ${fmt(today, true)}`)).toBe(true);
+  });
+
+  it('returns true for a single date that is today, without a period', () => {
+    const today = Temporal.Now.plainDateISO();
+    expect(isEstimatedDeliveryToday(fmt(today, false))).toBe(true);
+  });
+
+  it('returns false for a date range even when today is the start of it', () => {
+    const today = Temporal.Now.plainDateISO();
+    const end = today.add({ days: 7 });
+    expect(isEstimatedDeliveryToday(`${fmt(today, true)} - ${fmt(end, true)}`)).toBe(false);
+  });
+
+  it('returns false when the single date is not today', () => {
+    const other = Temporal.Now.plainDateISO().add({ days: 3 });
+    expect(isEstimatedDeliveryToday(fmt(other, true))).toBe(false);
+  });
+
+  it('returns false for null', () => {
+    expect(isEstimatedDeliveryToday(null)).toBe(false);
+  });
+});

@@ -40,7 +40,7 @@ const NODE_TIME_SELECTOR = '[class*="nodeTime"]';
 const ORDER_ID_PARAM = 'tradeOrderId';
 
 const ESTIMATED_DELIVERY_REGEX = /Delivery:\s*([^,]+)/i;
-const ESTIMATED_DELIVERY_DATE_REGEX = /([A-Za-z]{3})\s+(\d{1,2})/;
+const ESTIMATED_DELIVERY_DATE_REGEX = /([A-Za-z]{3})\.?\s+(\d{1,2})/;
 const ESTIMATED_DELIVERY_MONTHS = new Set([
   'jan',
   'feb',
