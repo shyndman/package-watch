@@ -4,6 +4,7 @@ import type {
   AliExpressTrackingResult,
   OrderSite,
   OrderStatus,
+  StoredOrderState,
 } from '../types';
 import { ALIEXPRESS_SITE, SCRAPE_TIMEOUT_MS, getSiteLabel } from './scheduler';
 
@@ -37,6 +38,7 @@ export type AliExpressDependencies = {
   processOrdersForSite: (site: OrderSite, orders: OrderStatus[]) => Promise<void>;
   sendAuthFailedNotification: () => Promise<void>;
   navigateScrapeTab: (tabId: number, url: string) => Promise<void>;
+  getStoredOrders: (site: OrderSite) => Promise<StoredOrderState>;
 };
 
 type PendingRequest<T> = {
@@ -80,9 +82,15 @@ export async function handleAliExpressOrdersDiscovered(
   }
 
   try {
+    const storedState = await deps.getStoredOrders(ALIEXPRESS_SITE);
     const orderDetailsResults = await scrapeAliExpressOrderDetailsForOrders(orders, tabId, deps);
     const trackingResults = await scrapeAliExpressTrackingForOrders(orders, tabId, deps);
-    const orderStatuses = buildAliExpressOrderStatuses(orders, orderDetailsResults, trackingResults);
+    const orderStatuses = buildAliExpressOrderStatuses(
+      orders,
+      orderDetailsResults,
+      trackingResults,
+      storedState.orders
+    );
     await deps.processOrdersForSite(ALIEXPRESS_SITE, orderStatuses);
   } finally {
     await deps.closeScrapeTab(tabId);
@@ -177,6 +185,10 @@ async function scrapeAliExpressOrderDetailsForOrders(
   const results: AliExpressOrderDetailsResult[] = [];
 
   for (const order of orders) {
+    if (order.highLevelStatus === 'Completed') {
+      continue;
+    }
+
     const detailsUrl = order.orderDetailsUrl ?? buildAliExpressOrderDetailsUrl(order.orderId);
     if (!detailsUrl) {
       continue;
@@ -260,7 +272,8 @@ function waitForScrapeResult<T>(
 function buildAliExpressOrderStatuses(
   orders: AliExpressDiscoveredOrder[],
   orderDetailsResults: AliExpressOrderDetailsResult[],
-  trackingResults: AliExpressTrackingResult[]
+  trackingResults: AliExpressTrackingResult[],
+  storedOrders: Record<string, OrderStatus>
 ): OrderStatus[] {
   const detailsByOrderId = new Map(
     orderDetailsResults.map((details) => [details.orderId, details])
@@ -274,10 +287,15 @@ function buildAliExpressOrderStatuses(
     const details = detailsByOrderId.get(order.orderId) ?? null;
     const statusDetail = buildAliExpressStatusDetail(tracking);
     const estimatedDelivery = tracking?.estimatedDelivery ?? null;
-    const productTitles = details?.productTitle ? [details.productTitle] : [];
-    const productUrls = details?.productUrl ? [details.productUrl] : [];
+    const stored = storedOrders[order.orderId];
+    const productTitles = details?.productTitle
+      ? [details.productTitle]
+      : (stored?.productTitles ?? []);
+    const productUrls = details?.productUrl
+      ? [details.productUrl]
+      : (stored?.productUrls ?? []);
 
-    if (!details) {
+    if (!details && order.highLevelStatus !== 'Completed') {
       console.warn('[AliExpress Orders] Missing order details for', order.orderId);
     }
 

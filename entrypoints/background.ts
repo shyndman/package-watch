@@ -1,5 +1,5 @@
 import type { OrderSite, OrderStatus, ParseFailurePhase } from '../lib/types';
-import { detectChanges, saveOrders, updateScrapeStatus } from '../lib/storage';
+import { detectChanges, getStoredOrders, saveOrders, updateScrapeStatus } from '../lib/storage';
 import {
   handleAliExpressAuthFailed,
   handleAliExpressOrderDetailsMessage,
@@ -211,6 +211,7 @@ function getAliExpressDeps() {
     processOrdersForSite,
     sendAuthFailedNotification,
     navigateScrapeTab,
+    getStoredOrders,
   };
 }
 

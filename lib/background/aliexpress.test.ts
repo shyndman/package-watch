@@ -27,6 +27,7 @@ describe('AliExpress single-tab scrape', () => {
       processOrdersForSite: vi.fn(),
       sendAuthFailedNotification: vi.fn(),
       navigateScrapeTab: vi.fn(),
+      getStoredOrders: vi.fn().mockResolvedValue({ orders: {}, lastChecked: 0 }),
     };
   });
 
@@ -121,32 +122,79 @@ describe('AliExpress single-tab scrape', () => {
       expect(deps.processOrdersForSite).toHaveBeenCalledTimes(1);
     });
 
-    it('skips tracking for completed orders', async () => {
+    it('skips details and tracking for completed orders', async () => {
       const orders = [makeOrder('order1', true), makeOrder('order2', false)];
       const tabId = 42;
 
       const scrapePromise = aliexpress.handleAliExpressOrdersDiscovered(orders, tabId, deps);
 
-      // Details for order1
+      // order1 is completed: its detail page is skipped. First navigation is order2 details.
       await flushPromises();
-      aliexpress.handleAliExpressOrderDetailsMessage(makeDetails('order1'), tabId, deps);
-      await flushPromises();
+      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(1);
+      expect(deps.navigateScrapeTab).toHaveBeenCalledWith(
+        tabId,
+        'https://www.aliexpress.com/p/order/detail.html?orderId=order2'
+      );
 
-      // Details for order2
       aliexpress.handleAliExpressOrderDetailsMessage(makeDetails('order2'), tabId, deps);
       await flushPromises();
 
       // Only tracking for order2 (order1 is completed)
-      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(3); // 2 details + 1 tracking
+      expect(deps.navigateScrapeTab).toHaveBeenCalledTimes(2);
       expect(deps.navigateScrapeTab).toHaveBeenLastCalledWith(
         tabId,
         'https://www.aliexpress.com/p/tracking/index.html?tradeOrderId=order2'
       );
 
+      // No call ever used an order1 URL.
+      const calledUrls = (deps.navigateScrapeTab as ReturnType<typeof vi.fn>).mock.calls.map(
+        (call) => call[1]
+      );
+      expect(calledUrls.some((url: string) => url.includes('order1'))).toBe(false);
+
       aliexpress.handleAliExpressTrackingMessage(makeTracking('order2'), tabId, deps);
       await scrapePromise;
 
       expect(deps.closeScrapeTab).toHaveBeenCalledTimes(1);
+    });
+
+    it('backfills product info for completed orders from stored state', async () => {
+      const orders = [makeOrder('order1', true), makeOrder('order2', false)];
+      const tabId = 42;
+
+      (deps.getStoredOrders as ReturnType<typeof vi.fn>).mockResolvedValue({
+        orders: {
+          order1: {
+            site: 'aliexpress',
+            orderId: 'order1',
+            status: 'Completed',
+            statusDetail: '',
+            productTitles: ['Stored P1'],
+            productUrls: ['https://stored/1'],
+            orderUrl: 'https://www.aliexpress.com/p/order/detail.html?orderId=order1',
+            orderDate: '2025-01-01',
+            isDeliveryExpectedToday: false,
+            isDelivered: true,
+            deliveredAt: '2025-01-05',
+          },
+        },
+        lastChecked: 0,
+      });
+
+      const scrapePromise = aliexpress.handleAliExpressOrdersDiscovered(orders, tabId, deps);
+
+      await flushPromises();
+      aliexpress.handleAliExpressOrderDetailsMessage(makeDetails('order2'), tabId, deps);
+      await flushPromises();
+      aliexpress.handleAliExpressTrackingMessage(makeTracking('order2'), tabId, deps);
+      await scrapePromise;
+
+      expect(deps.processOrdersForSite).toHaveBeenCalledTimes(1);
+      const processed = (deps.processOrdersForSite as ReturnType<typeof vi.fn>).mock
+        .calls[0][1] as import('../types').OrderStatus[];
+      const order1Status = processed.find((status) => status.orderId === 'order1');
+      expect(order1Status?.productTitles).toEqual(['Stored P1']);
+      expect(order1Status?.productUrls).toEqual(['https://stored/1']);
     });
 
     it('closes tab on failure when no tabId provided', async () => {
